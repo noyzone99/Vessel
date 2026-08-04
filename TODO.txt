@@ -1,0 +1,1 @@
+* Compare current compression packages with NativeCompressions

@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/Examples/" />
+  <Folder Name="/Solution Items/">
+    <File Path="TODO.txt" />
+  </Folder>
+  <Folder Name="/Sources/">
+    <Project Path="Sources/Vessel.Core/Vessel.Core.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="Tests/Vessel.Benchmark/Vessel.Benchmark.csproj" Id="13c9fa6e-8bda-4ad3-a94c-87ff51c76f5d" />
+    <Project Path="Tests/Vessel.Core.UnitTests/Vessel.Core.UnitTests.csproj" />
+  </Folder>
+</Solution>

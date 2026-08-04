@@ -1,0 +1,17 @@
+<Project>
+	<Target Name="ValidatePackageConfiguration" BeforeTargets="Pack">
+		<Error Condition="'$(Configuration)' != 'Release'"
+			Text="NuGet packages can only be generated in Release configuration." />
+	</Target>
+
+	<Target Name="PrintNuGetPackagePath" AfterTargets="Pack"
+		Condition="'$(IsPackable)' == 'true'">
+		<PropertyGroup>
+			<NuGetPackageFullPath>
+				$([System.IO.Path]::GetFullPath('$(PackageOutputPath)$(PackageId).$(PackageVersion).nupkg'))
+			</NuGetPackageFullPath>
+		</PropertyGroup>
+		<Message Importance="High"
+			Text="NuGet folder: file:///$([System.IO.Path]::GetFullPath('$(PackageOutputPath)'))" />
+	</Target>
+</Project>

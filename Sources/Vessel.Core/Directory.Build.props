@@ -1,0 +1,30 @@
+<Project>
+
+    <PropertyGroup>
+        <DefaultItemExcludes>
+            $(DefaultItemExcludes);
+            Directory.Build.props;
+            Directory.Build.targets
+        </DefaultItemExcludes>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <IsPackable>true</IsPackable>
+        <PackageOutputPath>bin\$(Configuration)\Packages\</PackageOutputPath>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+        <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+        <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+        <IsPackable>true</IsPackable>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)' != 'Release'">
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+</Project>
