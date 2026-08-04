@@ -12,14 +12,18 @@ namespace Vessel;
 /// Coordinates the metadata repository and the blob storage engine for the public storage API.
 /// </summary>
 /// <remarks>
-/// This implementation keeps logical object metadata and physical blob payloads in sync while protecting concurrent access to the same key with a small set of per-key locks.
+/// This implementation keeps logical object metadata and physical blob payloads in sync while protecting concurrent
+/// access to the same key with a small set of per-key locks.
 /// </remarks>
 /// <param name="storageBasePath">The root directory used to store metadata, blobs, and temporary files.</param>
-/// <param name="options">Optional configuration for the storage instance, including diagnostics and behavior toggles that influence metadata handling.</param>
+/// <param name="options">
+/// Optional configuration for the storage instance, including diagnostics and behavior toggles that influence metadata
+/// handling.
+/// </param>
 /// <exception cref="ArgumentException">
 /// Thrown when <paramref name="storageBasePath"/> is <see langword="null"/>, empty, or whitespace.
 /// </exception>
-internal sealed class VesselStorage(string storageBasePath, VesselStorageOptions options = default!) : IVesselStorage
+public sealed class VesselStorage(string storageBasePath, VesselStorageOptions options = default!) : IVesselStorage
 {
     private readonly IVesselLogger? _logger = options.Logger;
     private readonly LocalBlobStorageEngine _blobStorageEngine = new(storageBasePath, options.Logger);

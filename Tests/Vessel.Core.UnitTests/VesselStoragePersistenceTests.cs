@@ -1,13 +1,12 @@
 using Moq;
 using System.Text;
 using Vessel.Logging;
-using Vessel.Models;
 
 namespace Vessel.Core.UnitTests;
 
 /// <summary>
-/// Tests for VesselStorage persistence when switching metadata compression between runs.
-/// Verifies that the storage layer correctly handles compression mode changes.
+/// Tests for VesselStorage persistence when switching metadata compression between runs. Verifies that the storage
+/// layer correctly handles compression mode changes.
 /// </summary>
 public sealed class VesselStoragePersistenceTests : IDisposable
 {
@@ -55,8 +54,8 @@ public sealed class VesselStoragePersistenceTests : IDisposable
 
             using var reader1 = new StreamReader(response1.ContentStream);
             using var reader2 = new StreamReader(response2.ContentStream);
-            Assert.Equal("Content 1", await reader1.ReadToEndAsync());
-            Assert.Equal("Content 2", await reader2.ReadToEndAsync());
+            Assert.Equal("Content 1", await reader1.ReadToEndAsync(TestContext.Current.CancellationToken));
+            Assert.Equal("Content 2", await reader2.ReadToEndAsync(TestContext.Current.CancellationToken));
         }
     }
 
@@ -81,8 +80,8 @@ public sealed class VesselStoragePersistenceTests : IDisposable
 
             using var reader1 = new StreamReader(response1.ContentStream);
             using var reader2 = new StreamReader(response2.ContentStream);
-            Assert.Equal("Content A", await reader1.ReadToEndAsync());
-            Assert.Equal("Content B", await reader2.ReadToEndAsync());
+            Assert.Equal("Content A", await reader1.ReadToEndAsync(TestContext.Current.CancellationToken));
+            Assert.Equal("Content B", await reader2.ReadToEndAsync(TestContext.Current.CancellationToken));
         }
     }
 
@@ -154,7 +153,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
 
             var response = await storage.GetAsync("update-key", TestContext.Current.CancellationToken);
             using var reader = new StreamReader(response.ContentStream);
-            var content = await reader.ReadToEndAsync();
+            var content = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
 
             Assert.Equal("Updated content", content);
         }
@@ -220,7 +219,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
                 Assert.Equal($"key-{i}", response.Metadata.Key);
 
                 using var reader = new StreamReader(response.ContentStream);
-                var content = await reader.ReadToEndAsync();
+                var content = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
                 Assert.Equal($"Content {i}", content);
             }
         }
@@ -303,8 +302,8 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             using var reader1 = new StreamReader(response1.ContentStream);
             using var reader2 = new StreamReader(response2.ContentStream);
 
-            var content1 = await reader1.ReadToEndAsync();
-            var content2 = await reader2.ReadToEndAsync();
+            var content1 = await reader1.ReadToEndAsync(TestContext.Current.CancellationToken);
+            var content2 = await reader2.ReadToEndAsync(TestContext.Current.CancellationToken);
 
             Assert.Equal(new string('A', 5000), content1);
             Assert.Equal(new string('B', 5000), content2);

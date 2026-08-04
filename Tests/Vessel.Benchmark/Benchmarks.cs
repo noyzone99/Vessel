@@ -3,29 +3,30 @@
 // -----------------------------------------------------------------------
 
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Microsoft.VSDiagnostics;
-using System.Reflection;
-using Vessel.Logging;
 
 namespace Vessel.Benchmark;
 
 // For more information on the VS BenchmarkDotNet Diagnosers see https://learn.microsoft.com/visualstudio/profiling/profiling-with-benchmark-dotnet
 [CPUUsageDiagnoser]
 [MemoryDiagnoser]
+//[SimpleJob(RuntimeMoniker.Net10_0, baseline: true)]
+[SimpleJob(RuntimeMoniker.NativeAot10_0)]
 public class Benchmarks
 {
     private const string Key = "benchmark-json";
-    private static readonly Type StorageImplementationType = typeof(IVesselStorage).Assembly.GetType("Vessel.VesselStorage")
-        ?? throw new InvalidOperationException("Could not locate the Vessel storage implementation.");
+    //private static readonly Type StorageImplementationType = typeof(IVesselStorage).Assembly.GetType("Vessel.VesselStorage")
+    //    ?? throw new InvalidOperationException("Could not locate the Vessel storage implementation.");
 
-    private static readonly ConstructorInfo StorageConstructor = StorageImplementationType.GetConstructor(
-        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-        binder: null,
-        [typeof(string), typeof(VesselStorageOptions)],
-        modifiers: null)
-        ?? throw new InvalidOperationException("Could not locate a suitable Vessel storage constructor.");
+    //private static readonly ConstructorInfo StorageConstructor = StorageImplementationType.GetConstructor(
+    //    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+    //    binder: null,
+    //    [typeof(string), typeof(VesselStorageOptions)],
+    //    modifiers: null)
+    //    ?? throw new InvalidOperationException("Could not locate a suitable Vessel storage constructor.");
 
-    private IVesselStorage? _storage;
+    private VesselStorage? _storage;
     private byte[] _payloadBytes = [];
     private string _storageRoot = string.Empty;
 
@@ -38,7 +39,7 @@ public class Benchmarks
         _storageRoot = Path.Combine(Path.GetTempPath(), "Vessel.Benchmarks", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_storageRoot);
         _payloadBytes = await File.ReadAllBytesAsync("sample.json");
-        _storage = CreateStorage(_storageRoot);
+        _storage = new VesselStorage(_storageRoot, new VesselStorageOptions());
 
         await _storage.PutAsync(
             Key,
@@ -91,10 +92,5 @@ public class Benchmarks
 
         await using var response = await _storage.GetAsync(Key);
         await response.ContentStream.CopyToAsync(Stream.Null);
-    }
-
-    private static IVesselStorage CreateStorage(string storageRoot)
-    {
-        return (IVesselStorage)StorageConstructor.Invoke([storageRoot, new VesselStorageOptions()]);
     }
 }
