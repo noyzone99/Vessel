@@ -161,7 +161,7 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
     }
 
     [Fact]
-    public async Task SwitchCompression_GetCountReturnsCorrectTotal()
+    public async Task SwitchCompression_IterationReturnsCurrentKeySet()
     {
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
@@ -176,8 +176,16 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
-            var count = await repository.GetCountAsync(CancellationToken.None);
-            Assert.Equal(3, count);
+            var keys = new List<string>();
+            await foreach (var key in repository.IterateKeysAsync("", CancellationToken.None))
+            {
+                keys.Add(key);
+            }
+
+            Assert.Equal(3, keys.Count);
+            Assert.Contains("key1", keys);
+            Assert.Contains("key2", keys);
+            Assert.Contains("key3", keys);
         }
     }
 
@@ -259,8 +267,13 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
-            var count = await repository.GetCountAsync(CancellationToken.None);
-            Assert.Equal(entryCount, count);
+            var keys = new List<string>();
+            await foreach (var key in repository.IterateKeysAsync("", CancellationToken.None))
+            {
+                keys.Add(key);
+            }
+
+            Assert.Equal(entryCount, keys.Count);
 
             for (int i = 0; i < entryCount; i++)
             {

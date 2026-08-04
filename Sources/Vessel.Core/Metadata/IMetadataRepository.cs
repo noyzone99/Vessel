@@ -44,21 +44,6 @@ internal interface IMetadataRepository : IDisposable
     Task<bool> IsHashReferencedAsync(string hash, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Returns the number of metadata entries currently stored.
-    /// </summary>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
-    /// <returns>The current number of metadata entries.</returns>
-    Task<long> GetCountAsync(CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Executes a RocksDB write batch through the supplied callback.
-    /// </summary>
-    /// <param name="batchAction">A callback that populates a RocksDB write batch.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="batchAction"/> is <see langword="null"/>.</exception>
-    Task WriteBatchAsync(Action<WriteBatch> batchAction, CancellationToken cancellationToken);
-
-    /// <summary>
     /// Streams logical keys matching the supplied prefix in ascending order.
     /// </summary>
     /// <param name="prefix">An optional prefix used to filter the enumeration.</param>

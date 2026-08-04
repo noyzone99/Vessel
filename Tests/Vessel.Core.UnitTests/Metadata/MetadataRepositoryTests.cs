@@ -1,6 +1,4 @@
 ﻿using Moq;
-using System.Text;
-using System.Text.Json;
 using Vessel.Logging;
 using Vessel.Metadata;
 using Vessel.Models;
@@ -485,196 +483,22 @@ public sealed class MetadataRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task GetCountAsync_WithEmptyRepository_ReturnsZero()
-    {
-        using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-
-        var count = await repository.GetCountAsync(CancellationToken.None);
-
-        Assert.Equal(0, count);
-    }
-
-    [Fact]
-    public async Task GetCountAsync_WithSingleEntry_ReturnsOne()
-    {
-        using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        var metadata = CreateTestMetadata("single-key", "single-hash");
-        await repository.UpsertAsync(metadata, CancellationToken.None);
-
-        var count = await repository.GetCountAsync(CancellationToken.None);
-
-        Assert.Equal(1, count);
-    }
-
-    [Fact]
-    public async Task GetCountAsync_WithMultipleEntries_ReturnsCorrectCount()
-    {
-        using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        var metadataList = Enumerable.Range(1, 10).Select(i => CreateTestMetadata($"key-{i}", $"hash-{i}")).ToList();
-        foreach (var metadata in metadataList)
-        {
-            await repository.UpsertAsync(metadata, CancellationToken.None);
-        }
-
-        var count = await repository.GetCountAsync(CancellationToken.None);
-
-        Assert.Equal(10, count);
-    }
-
-    [Fact]
-    public async Task GetCountAsync_AfterDelete_ReturnsCorrectCount()
-    {
-        using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        await repository.UpsertAsync(CreateTestMetadata("key1", "hash1"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("key2", "hash2"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("key3", "hash3"), CancellationToken.None);
-        await repository.DeleteAsync("key2", CancellationToken.None);
-
-        var count = await repository.GetCountAsync(CancellationToken.None);
-
-        Assert.Equal(2, count);
-    }
-
-    [Fact]
-    public async Task GetCountAsync_WithUpdatedEntry_ReturnsCorrectCount()
+    public async Task IterateKeysAsync_AfterDeleteAndUpdate_ReturnsCurrentKeys()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
         await repository.UpsertAsync(CreateTestMetadata("key1", "hash1"), CancellationToken.None);
         await repository.UpsertAsync(CreateTestMetadata("key2", "hash2"), CancellationToken.None);
         await repository.UpsertAsync(CreateTestMetadata("key2", "hash2-updated"), CancellationToken.None);
+        await repository.DeleteAsync("key1", CancellationToken.None);
 
-        var count = await repository.GetCountAsync(CancellationToken.None);
-
-        Assert.Equal(2, count);
-    }
-
-    [Fact]
-    public async Task GetCountAsync_ConcurrentReads_ReturnConsistentCount()
-    {
-        using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        var metadataList = Enumerable.Range(1, 5).Select(i => CreateTestMetadata($"key-{i}", $"hash-{i}")).ToList();
-        foreach (var metadata in metadataList)
+        var keys = new List<string>();
+        await foreach (var key in repository.IterateKeysAsync("", CancellationToken.None))
         {
-            await repository.UpsertAsync(metadata, CancellationToken.None);
+            keys.Add(key);
         }
 
-        var tasks = Enumerable.Range(0, 10).Select(_ => repository.GetCountAsync(CancellationToken.None)).ToArray();
-        var counts = await Task.WhenAll(tasks);
-
-        Assert.All(counts, count => Assert.Equal(5, count));
-    }
-
-    [Fact]
-    public async Task WriteBatchAsync_WithNullBatchAction_ThrowsArgumentNullException()
-    {
-        using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-
-        await Assert.ThrowsAsync<ArgumentNullException>(() => repository.WriteBatchAsync(null!, CancellationToken.None));
-    }
-
-    [Fact]
-    public async Task WriteBatchAsync_WithSingleWrite_StoresData()
-    {
-        using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        var metadata = CreateTestMetadata("batch-key", "batch-hash");
-
-        await repository.WriteBatchAsync(batch =>
-        {
-            var keyBytes = Encoding.UTF8.GetBytes(metadata.Key);
-            var valueBytes = JsonSerializer.SerializeToUtf8Bytes(metadata);
-            batch.Put(keyBytes, valueBytes);
-        }, CancellationToken.None);
-
-        var result = await repository.GetAsync("batch-key", CancellationToken.None);
-        Assert.NotNull(result);
-        Assert.Equal("batch-key", result.Value.Key);
-        Assert.Equal("batch-hash", result.Value.Hash);
-    }
-
-    [Fact]
-    public async Task WriteBatchAsync_WithMultipleWrites_StoresAllData()
-    {
-        using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        var metadataList = Enumerable.Range(1, 5).Select(i => CreateTestMetadata($"batch-key-{i}", $"batch-hash-{i}")).ToList();
-
-        await repository.WriteBatchAsync(batch =>
-        {
-            foreach (var metadata in metadataList)
-            {
-                var keyBytes = Encoding.UTF8.GetBytes(metadata.Key);
-                var valueBytes = JsonSerializer.SerializeToUtf8Bytes(metadata);
-                batch.Put(keyBytes, valueBytes);
-            }
-        }, CancellationToken.None);
-
-        foreach (var metadata in metadataList)
-        {
-            var result = await repository.GetAsync(metadata.Key, CancellationToken.None);
-            Assert.NotNull(result);
-            Assert.Equal(metadata.Key, result.Value.Key);
-            Assert.Equal(metadata.Hash, result.Value.Hash);
-        }
-    }
-
-    [Fact]
-    public async Task WriteBatchAsync_WithDelete_DeletesData()
-    {
-        using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        var metadata = CreateTestMetadata("batch-delete-key", "batch-delete-hash");
-        await repository.UpsertAsync(metadata, CancellationToken.None);
-
-        await repository.WriteBatchAsync(batch =>
-        {
-            var keyBytes = Encoding.UTF8.GetBytes(metadata.Key);
-            batch.Delete(keyBytes);
-        }, CancellationToken.None);
-
-        var result = await repository.GetAsync("batch-delete-key", CancellationToken.None);
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public async Task WriteBatchAsync_WithMixedOperations_AppliesAllOperations()
-    {
-        using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        await repository.UpsertAsync(CreateTestMetadata("existing-key", "existing-hash"), CancellationToken.None);
-        var newMetadata = CreateTestMetadata("new-key", "new-hash");
-
-        await repository.WriteBatchAsync(batch =>
-        {
-            batch.Delete(Encoding.UTF8.GetBytes("existing-key"));
-            var keyBytes = Encoding.UTF8.GetBytes(newMetadata.Key);
-            var valueBytes = JsonSerializer.SerializeToUtf8Bytes(newMetadata);
-            batch.Put(keyBytes, valueBytes);
-        }, CancellationToken.None);
-
-        var existingResult = await repository.GetAsync("existing-key", CancellationToken.None);
-        Assert.Null(existingResult);
-        var newResult = await repository.GetAsync("new-key", CancellationToken.None);
-        Assert.NotNull(newResult);
-        Assert.Equal("new-key", newResult.Value.Key);
-    }
-
-    [Fact]
-    public async Task WriteBatchAsync_ConcurrentBatches_AllSucceed()
-    {
-        using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-
-        var tasks = Enumerable.Range(1, 10).Select(i => repository.WriteBatchAsync(batch =>
-        {
-            var metadata = CreateTestMetadata($"concurrent-batch-key-{i}", $"concurrent-batch-hash-{i}");
-            var keyBytes = Encoding.UTF8.GetBytes(metadata.Key);
-            var valueBytes = JsonSerializer.SerializeToUtf8Bytes(metadata);
-            batch.Put(keyBytes, valueBytes);
-        }, CancellationToken.None)).ToArray();
-        await Task.WhenAll(tasks);
-
-        for (int i = 1; i <= 10; i++)
-        {
-            var result = await repository.GetAsync($"concurrent-batch-key-{i}", CancellationToken.None);
-            Assert.NotNull(result);
-            Assert.Equal($"concurrent-batch-key-{i}", result.Value.Key);
-        }
+        Assert.Single(keys);
+        Assert.Equal("key2", keys[0]);
     }
 
     [Fact]

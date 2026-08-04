@@ -172,18 +172,11 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
         }
     }
 
-    /// <inheritdoc/>
-    public ValueTask DisposeAsync()
-    {
-        _logger?.Log(VesselLogLevel.Information, "Disposing embedded object storage.");
-        _metadataRepository.Dispose();
-        return ValueTask.CompletedTask;
-    }
-
     private SemaphoreSlim GetKeyLock(string key)
     {
-        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(key));
-        var hash = BitConverter.ToInt32(hashBytes, 0);
+        var hashBytes = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        hashBytes.AppendData(Encoding.UTF8.GetBytes(key));
+        var hash = BitConverter.ToInt32(hashBytes.GetHashAndReset(), 0);
         if (hash == int.MinValue)
         {
             hash = 0;
@@ -205,5 +198,13 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
         }
 
         return Path.GetExtension(fileName);
+    }
+
+    /// <inheritdoc/>
+    public ValueTask DisposeAsync()
+    {
+        _logger?.Log(VesselLogLevel.Information, "Disposing embedded object storage.");
+        _metadataRepository.Dispose();
+        return ValueTask.CompletedTask;
     }
 }

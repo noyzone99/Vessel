@@ -117,7 +117,7 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
     }
 
     [Fact]
-    public async Task GetCountAsync_WithCompression_ReturnsCorrectCount()
+    public async Task IterateKeysAsync_WithCompression_ReturnsExpectedKeys()
     {
         using var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object);
         var metadataList = Enumerable.Range(1, 50)
@@ -129,9 +129,15 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
             await repository.UpsertAsync(metadata, CancellationToken.None);
         }
 
-        var count = await repository.GetCountAsync(CancellationToken.None);
+        var keys = new List<string>();
+        await foreach (var key in repository.IterateKeysAsync("", CancellationToken.None))
+        {
+            keys.Add(key);
+        }
 
-        Assert.Equal(50, count);
+        Assert.Equal(50, keys.Count);
+        Assert.Contains("count-key-1", keys);
+        Assert.Contains("count-key-50", keys);
     }
 
     [Fact]
