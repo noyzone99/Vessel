@@ -28,7 +28,6 @@
 
 	<ItemGroup>
 		<None Include="Assets\README.md" Pack="true" PackagePath="\" />
-		<None Include="Assets\LICENSE" Pack="true" PackagePath="\" />
 		<None Include="Assets\Icon.png" Pack="true" PackagePath="\" />
 	</ItemGroup>
 

@@ -21,7 +21,7 @@ public class Benchmarks
     private static readonly ConstructorInfo StorageConstructor = StorageImplementationType.GetConstructor(
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
         binder: null,
-        [typeof(string), typeof(bool), typeof(IVesselLogger)],
+        [typeof(string), typeof(VesselStorageOptions)],
         modifiers: null)
         ?? throw new InvalidOperationException("Could not locate a suitable Vessel storage constructor.");
 
@@ -95,6 +95,6 @@ public class Benchmarks
 
     private static IVesselStorage CreateStorage(string storageRoot)
     {
-        return (IVesselStorage)StorageConstructor.Invoke([storageRoot, false, null]);
+        return (IVesselStorage)StorageConstructor.Invoke([storageRoot, new VesselStorageOptions()]);
     }
 }
