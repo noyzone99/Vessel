@@ -16,7 +16,7 @@ internal interface IMetadataRepository : IDisposable
     /// <exception cref="ArgumentException">
     /// Thrown when <paramref name="key"/> is null, empty, or whitespace.
     /// </exception>
-    Task<ObjectMetadata?> GetAsync(string key, CancellationToken cancellationToken);
+    ValueTask<ObjectMetadata?> GetAsync(string key, CancellationToken cancellationToken);
 
     /// <summary>
     /// Retrieves metadata associated with the specified logical key.
@@ -36,7 +36,7 @@ internal interface IMetadataRepository : IDisposable
     /// <exception cref="ArgumentNullException">
     /// Thrown when <paramref name="metadata"/> is <see langword="null"/>.
     /// </exception>
-    Task UpsertAsync(in ObjectMetadata metadata, CancellationToken cancellationToken);
+    ValueTask UpsertAsync(in ObjectMetadata metadata, CancellationToken cancellationToken);
 
     /// <summary>
     /// Persists or updates the metadata for a stored object.
@@ -58,7 +58,7 @@ internal interface IMetadataRepository : IDisposable
     /// <exception cref="ArgumentException">
     /// Thrown when <paramref name="key"/> is null, empty, or whitespace.
     /// </exception>
-    Task<bool> DeleteAsync(string key, CancellationToken cancellationToken);
+    ValueTask<bool> DeleteAsync(string key, CancellationToken cancellationToken);
 
     /// <summary>
     /// Deletes metadata for the specified logical key when present.
@@ -81,7 +81,7 @@ internal interface IMetadataRepository : IDisposable
     /// <exception cref="ArgumentException">
     /// Thrown when <paramref name="hash"/> is null, empty, or whitespace.
     /// </exception>
-    Task<bool> IsHashReferencedAsync(string hash, CancellationToken cancellationToken);
+    ValueTask<bool> IsHashReferencedAsync(string hash, CancellationToken cancellationToken);
 
     /// <summary>
     /// Determines whether any metadata entry still references the supplied blob hash.

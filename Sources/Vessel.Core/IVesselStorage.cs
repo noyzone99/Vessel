@@ -36,7 +36,7 @@ public interface IVesselStorage : IDisposable
     /// <returns>An <see cref="ObjectResponse"/> that exposes the content stream and metadata.</returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> is null, empty, or whitespace.</exception>
     /// <exception cref="FileNotFoundException">Thrown when no object exists for the requested key.</exception>
-    Task<ObjectResponse> GetAsync(string key, CancellationToken cancellationToken = default);
+    ValueTask<ObjectResponse> GetAsync(string key, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves the object payload and metadata for the specified logical key.
@@ -65,7 +65,7 @@ public interface IVesselStorage : IDisposable
     /// <param name="cancellationToken">A token that can cancel the operation.</param>
     /// <returns>Metadata for the object, or <see langword="null"/> when the key is unknown.</returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> is null, empty, or whitespace.</exception>
-    Task<ObjectMetadata?> GetMetadataAsync(string key, CancellationToken cancellationToken = default);
+    ValueTask<ObjectMetadata?> GetMetadataAsync(string key, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Returns metadata for the specified object without opening the underlying blob content.

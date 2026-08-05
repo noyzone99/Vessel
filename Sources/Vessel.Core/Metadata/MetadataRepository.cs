@@ -56,7 +56,7 @@ internal sealed class MetadataRepository : IMetadataRepository
     }
 
     /// <inheritdoc/>
-    public Task<ObjectMetadata?> GetAsync(string key, CancellationToken cancellationToken)
+    public async ValueTask<ObjectMetadata?> GetAsync(string key, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
@@ -64,10 +64,10 @@ internal sealed class MetadataRepository : IMetadataRepository
         if (!result)
         {
             _logger?.Log(VesselLogLevel.Debug, $"Metadata lookup miss for key '{key}'.");
-            return Task.FromResult<ObjectMetadata?>(null);
+            return null;
         }
         _logger?.Log(VesselLogLevel.Debug, $"Metadata lookup hit for key '{key}'.");
-        return Task.FromResult<ObjectMetadata?>(metadata);
+        return metadata;
     }
 
     /// <inheritdoc/>
@@ -88,11 +88,11 @@ internal sealed class MetadataRepository : IMetadataRepository
     }
 
     /// <inheritdoc/>
-    public Task UpsertAsync(in ObjectMetadata metadata, CancellationToken cancellationToken)
+    public ValueTask UpsertAsync(in ObjectMetadata metadata, CancellationToken cancellationToken)
     {
         _database.Upsert(metadata.Key, metadata);
         _logger?.Log(VesselLogLevel.Debug, $"Stored metadata for key '{metadata.Key}' with hash '{metadata.Hash}'.");
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc/>
@@ -105,7 +105,7 @@ internal sealed class MetadataRepository : IMetadataRepository
     }
 
     /// <inheritdoc/>
-    public async Task<bool> DeleteAsync(string key, CancellationToken cancellationToken)
+    public async ValueTask<bool> DeleteAsync(string key, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         var result = _database.TryDelete(key, out _);
@@ -136,7 +136,7 @@ internal sealed class MetadataRepository : IMetadataRepository
     }
 
     /// <inheritdoc/>
-    public Task<bool> IsHashReferencedAsync(string hash, CancellationToken cancellationToken)
+    public async ValueTask<bool> IsHashReferencedAsync(string hash, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hash);
 
@@ -145,17 +145,22 @@ internal sealed class MetadataRepository : IMetadataRepository
 
         while (iterator.Next())
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _logger?.Log(VesselLogLevel.Debug, $"Cancellation requested while checking hash references for blob hash '{hash}'.");
+                return false;
+            }
             var metadata = iterator.CurrentValue;
 
             if (metadata.Hash == hash)
             {
                 _logger?.Log(VesselLogLevel.Debug, $"Found metadata reference for blob hash '{hash}'.");
-                return Task.FromResult(true);
+                return true;
             }
         }
 
         _logger?.Log(VesselLogLevel.Debug, $"No metadata references found for blob hash '{hash}'.");
-        return Task.FromResult(false);
+        return false;
     }
 
     /// <inheritdoc/>
@@ -221,39 +226,44 @@ internal sealed class MetadataRepository : IMetadataRepository
         //ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(prefix);
 
-        using var iterator = _database.CreateIterator();
-        var enumeratedKeys = 0L;
+        return IterateKeysInternal();
 
-        _logger?.Log(VesselLogLevel.Debug, $"Iterating keys with prefix '{prefix}'.");
+        IEnumerable<string> IterateKeysInternal()
+        {
+            using var iterator = _database.CreateIterator();
+            var enumeratedKeys = 0L;
 
-        if (string.IsNullOrEmpty(prefix))
-        {
-            iterator.SeekFirst();
-        }
-        else
-        {
-            iterator.Seek(prefix);
-        }
+            _logger?.Log(VesselLogLevel.Debug, $"Iterating keys with prefix '{prefix}'.");
 
-        while (iterator.Next())
-        {
-            string key = iterator.CurrentKey;
-            if (!key.StartsWith(prefix, StringComparison.Ordinal))
+            if (string.IsNullOrEmpty(prefix))
             {
-                break;
+                iterator.SeekFirst();
+            }
+            else
+            {
+                iterator.Seek(prefix);
             }
 
-            var metadata = iterator.CurrentValue;
-            if (IsDeletedMarker(metadata))
+            while (iterator.Next())
             {
-                continue;
+                string key = iterator.CurrentKey;
+                if (!key.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    break;
+                }
+
+                var metadata = iterator.CurrentValue;
+                if (IsDeletedMarker(metadata))
+                {
+                    continue;
+                }
+
+                enumeratedKeys++;
+                yield return key;
             }
 
-            enumeratedKeys++;
-            yield return key;
+            _logger?.Log(VesselLogLevel.Debug, $"Completed key iteration for prefix '{prefix}' with {enumeratedKeys} keys.");
         }
-
-        _logger?.Log(VesselLogLevel.Debug, $"Completed key iteration for prefix '{prefix}' with {enumeratedKeys} keys.");
     }
 
     private static bool IsDeletedMarker(in ObjectMetadata metadata)

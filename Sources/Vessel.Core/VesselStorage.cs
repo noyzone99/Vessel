@@ -83,7 +83,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
     }
 
     /// <inheritdoc/>
-    public async Task<ObjectResponse> GetAsync(string key, CancellationToken cancellationToken = default)
+    public async ValueTask<ObjectResponse> GetAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
@@ -167,7 +167,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
     }
 
     /// <inheritdoc/>
-    public Task<ObjectMetadata?> GetMetadataAsync(string key, CancellationToken cancellationToken = default)
+    public ValueTask<ObjectMetadata?> GetMetadataAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         _logger?.Log(VesselLogLevel.Debug, $"Fetching metadata for object '{key}'.");

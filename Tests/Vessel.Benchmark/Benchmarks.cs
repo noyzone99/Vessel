@@ -12,7 +12,7 @@ namespace Vessel.Benchmark;
 [CPUUsageDiagnoser]
 [MemoryDiagnoser]
 [SimpleJob(RuntimeMoniker.Net10_0, baseline: true)]
-//[SimpleJob(RuntimeMoniker.NativeAot10_0)]
+[SimpleJob(RuntimeMoniker.NativeAot10_0)]
 public class Benchmarks
 {
     private const string Key = "benchmark-json";
@@ -56,7 +56,7 @@ public class Benchmarks
 
     [Benchmark(Baseline = true)]
     [BenchmarkCategory("Write")]
-    public async Task WriteJsonPayload()
+    public async Task WriteJson()
     {
         ArgumentNullException.ThrowIfNull(_storage);
 
@@ -74,7 +74,7 @@ public class Benchmarks
 
     [Benchmark]
     [BenchmarkCategory("ReadAsync")]
-    public async Task ReadJsonPayloadAsync()
+    public async Task ReadJsonAsync()
     {
         ArgumentNullException.ThrowIfNull(_storage);
 
@@ -84,7 +84,7 @@ public class Benchmarks
 
     [Benchmark]
     [BenchmarkCategory("ReadSync")]
-    public void ReadJsonPayloadSync()
+    public void ReadJsonSync()
     {
         ArgumentNullException.ThrowIfNull(_storage);
 
