@@ -11,9 +11,10 @@ namespace Vessel.Metadata;
 /// </summary>
 internal sealed class MetadataRepository : IMetadataRepository
 {
-    private readonly string _databasePath;
-    private readonly IZoneTree<string, ObjectMetadata> _database;
-    private readonly IMaintainer _maintainer;
+    private readonly IZoneTree<string, ObjectMetadata> _metadataDb;
+    private readonly IZoneTree<string, int> _refCountDb;
+    private readonly IMaintainer _metadataDbMaintainer;
+    private readonly IMaintainer _refCountDbMaintainer;
     private readonly IVesselLogger? _logger;
 
     /// <summary>
@@ -30,16 +31,11 @@ internal sealed class MetadataRepository : IMetadataRepository
     /// </exception>
     public MetadataRepository(string storageBasePath, bool useCompression, IVesselLogger? logger = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(storageBasePath);
         _logger = logger;
-        _databasePath = Path.Combine(Path.GetFullPath(storageBasePath), "metadata");
-        Directory.CreateDirectory(_databasePath);
+        var fullPath = Path.GetFullPath(storageBasePath);
 
-        var dataDirectoryPath = Path.GetFullPath(Path.Combine(_databasePath, ".storage"));
-        Directory.CreateDirectory(dataDirectoryPath);
-
-        _database = new ZoneTreeFactory<string, ObjectMetadata>()
-            .SetDataDirectory(dataDirectoryPath)
+        _metadataDb = new ZoneTreeFactory<string, ObjectMetadata>()
+            .SetDataDirectory(Path.Join(fullPath, "metadata"))
             .ConfigureDiskSegmentOptions(options =>
             {
                 options.CompressionMethod = useCompression ? CompressionMethod.LZ4 : CompressionMethod.None;
@@ -47,37 +43,25 @@ internal sealed class MetadataRepository : IMetadataRepository
                 options.CompressionBlockSize = 4 * 1024 * 1024;
             })
             .SetValueSerializer(new ObjectMetadataSerializer())
-            // FIX 1: Tipi espliciti per la sintassi delle lambda con modificatori 'in' e 'ref'
-            .SetIsDeletedDelegate(static (in _, in value) => IsDeletedMarker(value))
+            .SetIsDeletedDelegate(static (in _, in value) => string.IsNullOrEmpty(value.Key))
             .SetMarkValueDeletedDelegate(static (ref value) => value = default)
             .OpenOrCreate();
+        _metadataDbMaintainer = _metadataDb.CreateMaintainer();
 
-        _maintainer = _database.CreateMaintainer();
-    }
-
-    /// <inheritdoc/>
-    public async ValueTask<ObjectMetadata?> GetAsync(string key, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-
-        var result = _database.TryGet(key, out var metadata);
-        if (!result)
-        {
-            _logger?.Log(VesselLogLevel.Debug, $"Metadata lookup miss for key '{key}'.");
-            return null;
-        }
-        _logger?.Log(VesselLogLevel.Debug, $"Metadata lookup hit for key '{key}'.");
-        return metadata;
+        _refCountDb = new ZoneTreeFactory<string, int>()
+            .SetDataDirectory(Path.Join(fullPath, "refcounts"))
+            .ConfigureDiskSegmentOptions(options => options.CompressionMethod = CompressionMethod.None)
+            .OpenOrCreate();
+        _refCountDbMaintainer = _refCountDb.CreateMaintainer();
     }
 
     /// <inheritdoc/>
     public ObjectMetadata? Get(string key)
     {
-        //ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
-        var result = _database.TryGet(key, out var metadata);
-        if (!result || IsDeletedMarker(metadata))
+        var result = _metadataDb.TryGet(key, out var metadata);
+        if (!result)
         {
             _logger?.Log(VesselLogLevel.Debug, $"Metadata lookup miss for key '{key}'.");
             return null;
@@ -88,113 +72,40 @@ internal sealed class MetadataRepository : IMetadataRepository
     }
 
     /// <inheritdoc/>
-    public ValueTask UpsertAsync(in ObjectMetadata metadata, CancellationToken cancellationToken)
-    {
-        _database.Upsert(metadata.Key, metadata);
-        _logger?.Log(VesselLogLevel.Debug, $"Stored metadata for key '{metadata.Key}' with hash '{metadata.Hash}'.");
-        return ValueTask.CompletedTask;
-    }
-
-    /// <inheritdoc/>
     public void Upsert(in ObjectMetadata metadata)
     {
-        //ObjectDisposedException.ThrowIf(_disposed, this);
-
-        _database.Upsert(metadata.Key, metadata);
-        _logger?.Log(VesselLogLevel.Debug, $"Stored metadata for key '{metadata.Key}' with hash '{metadata.Hash}'.");
-    }
-
-    /// <inheritdoc/>
-    public async ValueTask<bool> DeleteAsync(string key, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        var result = _database.TryDelete(key, out _);
-        if (!result)
+        if (_metadataDb.TryGet(metadata.Key, out var oldMetadata))
         {
-            _logger?.Log(VesselLogLevel.Debug, $"Delete ignored because metadata for key '{key}' does not exist.");
-            return false;
+            if (oldMetadata.Hash == metadata.Hash)
+            {
+                _metadataDb.Upsert(metadata.Key, metadata);
+                return;
+            }
+            DecrementRefCount(oldMetadata.Hash);
         }
-        _logger?.Log(VesselLogLevel.Information, $"Deleted metadata for key '{key}'.");
-        return true;
+
+        IncrementRefCount(metadata.Hash);
+        _metadataDb.Upsert(metadata.Key, metadata);
     }
 
     /// <inheritdoc/>
     public bool Delete(string key)
     {
-        //ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-
-        var result = _database.TryDelete(key, out _);
-        if (!result)
-        {
-            _logger?.Log(VesselLogLevel.Debug, $"Delete ignored because metadata for key '{key}' does not exist.");
-            return false;
-        }
-
-        _logger?.Log(VesselLogLevel.Information, $"Deleted metadata for key '{key}'.");
-        return true;
-    }
-
-    /// <inheritdoc/>
-    public async ValueTask<bool> IsHashReferencedAsync(string hash, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(hash);
-
-        using var iterator = _database.CreateIterator();
-        iterator.SeekFirst();
-
-        while (iterator.Next())
-        {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                _logger?.Log(VesselLogLevel.Debug, $"Cancellation requested while checking hash references for blob hash '{hash}'.");
-                return false;
-            }
-            var metadata = iterator.CurrentValue;
-
-            if (metadata.Hash == hash)
-            {
-                _logger?.Log(VesselLogLevel.Debug, $"Found metadata reference for blob hash '{hash}'.");
-                return true;
-            }
-        }
-
-        _logger?.Log(VesselLogLevel.Debug, $"No metadata references found for blob hash '{hash}'.");
-        return false;
+        if (!_metadataDb.TryGet(key, out var metadata)) return false;
+        DecrementRefCount(metadata.Hash);
+        return _metadataDb.TryDelete(key, out _);
     }
 
     /// <inheritdoc/>
     public bool IsHashReferenced(string hash)
     {
-        //ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentException.ThrowIfNullOrWhiteSpace(hash);
-
-        using var iterator = _database.CreateIterator();
-        iterator.SeekFirst();
-
-        while (iterator.Next())
-        {
-            var metadata = iterator.CurrentValue;
-            if (IsDeletedMarker(metadata))
-            {
-                continue;
-            }
-
-            if (string.Equals(metadata.Hash, hash, StringComparison.Ordinal))
-            {
-                _logger?.Log(VesselLogLevel.Debug, $"Found metadata reference for blob hash '{hash}'.");
-                return true;
-            }
-        }
-
-        _logger?.Log(VesselLogLevel.Debug, $"No metadata references found for blob hash '{hash}'.");
-        return false;
+        return _refCountDb.TryGet(hash, out var count) && count > 0;
     }
 
     /// <inheritdoc/>
     public async IAsyncEnumerable<string> IterateKeysAsync(string prefix, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        using var iterator = _database.CreateIterator();
+        using var iterator = _metadataDb.CreateIterator();
         var enumeratedKeys = 0L;
 
         _logger?.Log(VesselLogLevel.Debug, $"Iterating keys with prefix '{prefix}'.");
@@ -215,63 +126,28 @@ internal sealed class MetadataRepository : IMetadataRepository
             enumeratedKeys++;
             yield return key;
         }
-
         _logger?.Log(VesselLogLevel.Debug, $"Completed key iteration for prefix '{prefix}' with {enumeratedKeys} keys.");
-        await Task.CompletedTask;
     }
 
-    /// <inheritdoc/>
-    public IEnumerable<string> IterateKeys(string prefix)
+    private void IncrementRefCount(string hash)
     {
-        //ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(prefix);
+        _refCountDb.Upsert(hash, _refCountDb.TryGet(hash, out var count) ? count + 1 : 1);
+    }
 
-        return IterateKeysInternal();
-
-        IEnumerable<string> IterateKeysInternal()
+    private void DecrementRefCount(string hash)
+    {
+        if (_refCountDb.TryGet(hash, out var count))
         {
-            using var iterator = _database.CreateIterator();
-            var enumeratedKeys = 0L;
-
-            _logger?.Log(VesselLogLevel.Debug, $"Iterating keys with prefix '{prefix}'.");
-
-            if (string.IsNullOrEmpty(prefix))
-            {
-                iterator.SeekFirst();
-            }
-            else
-            {
-                iterator.Seek(prefix);
-            }
-
-            while (iterator.Next())
-            {
-                string key = iterator.CurrentKey;
-                if (!key.StartsWith(prefix, StringComparison.Ordinal))
-                {
-                    break;
-                }
-
-                var metadata = iterator.CurrentValue;
-                if (IsDeletedMarker(metadata))
-                {
-                    continue;
-                }
-
-                enumeratedKeys++;
-                yield return key;
-            }
-
-            _logger?.Log(VesselLogLevel.Debug, $"Completed key iteration for prefix '{prefix}' with {enumeratedKeys} keys.");
+            if (count <= 1) _refCountDb.TryDelete(hash, out _);
+            else _refCountDb.Upsert(hash, count - 1);
         }
     }
 
-    private static bool IsDeletedMarker(in ObjectMetadata metadata)
-        => string.IsNullOrEmpty(metadata.Key) && string.IsNullOrEmpty(metadata.Hash);
-
     public void Dispose()
     {
-        _maintainer.Dispose();
-        _database.Dispose();
+        _metadataDbMaintainer.Dispose();
+        _metadataDb.Dispose();
+        _refCountDbMaintainer.Dispose();
+        _refCountDb.Dispose();
     }
 }

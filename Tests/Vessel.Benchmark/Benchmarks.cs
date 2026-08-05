@@ -1,94 +1,74 @@
-// -----------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation.  All rights reserved.
-// -----------------------------------------------------------------------
-
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Microsoft.VSDiagnostics;
+using Vessel.Models;
 
 namespace Vessel.Benchmark;
 
-// For more information on the VS BenchmarkDotNet Diagnosers see https://learn.microsoft.com/visualstudio/profiling/profiling-with-benchmark-dotnet
 [CPUUsageDiagnoser]
 [MemoryDiagnoser]
 [SimpleJob(RuntimeMoniker.Net10_0, baseline: true)]
-[SimpleJob(RuntimeMoniker.NativeAot10_0)]
 public class Benchmarks
 {
-    private const string Key = "benchmark-json";
-
     private VesselStorage? _storage;
     private byte[] _payloadBytes = [];
     private string _storageRoot = string.Empty;
+    private int _iteration = 0;
 
-    [Params(CompressionType.None, CompressionType.Zstd, CompressionType.LZ4)]
-    public CompressionType CompressionType { get; set; }
+    //[Params(CompressionType.None, CompressionType.Zstd, CompressionType.LZ4)]
+    public CompressionType CompressionType { get; set; } = CompressionType.Zstd;
+
+    [Params(1024, 1024 * 512)]
+    public int PayloadSize { get; set; }
 
     [GlobalSetup]
     public async Task SetupAsync()
     {
         _storageRoot = Path.Combine(Path.GetTempPath(), "Vessel.Benchmarks", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_storageRoot);
-        _payloadBytes = await File.ReadAllBytesAsync("sample.json");
+
+        _payloadBytes = new byte[PayloadSize];
+        Random.Shared.NextBytes(_payloadBytes);
+
         _storage = new VesselStorage(_storageRoot, new VesselStorageOptions());
 
-        await _storage.PutAsync(
-            Key,
-            new MemoryStream(_payloadBytes, writable: false),
-            overwrite: true,
-            fileName: "benchmark.json",
-            extension: ".json",
-            mimeType: "application/json",
-            compressionType: CompressionType,
-            compressionLevel: CompressionLevel.Balanced);
+        for (int i = 0; i < 100; i++)
+        {
+            await _storage.PutAsync($"init-{i}", new MemoryStream(new byte[100]));
+        }
     }
 
     [GlobalCleanup]
     public void Cleanup()
     {
         _storage?.Dispose();
-
-        if (Directory.Exists(_storageRoot))
-        {
-            Directory.Delete(_storageRoot, recursive: true);
-        }
+        if (Directory.Exists(_storageRoot)) Directory.Delete(_storageRoot, recursive: true);
     }
 
-    [Benchmark(Baseline = true)]
-    [BenchmarkCategory("Write")]
-    public async Task WriteJson()
+    [Benchmark(Description = "Writing of new object (I/O Complete)")]
+    public async Task WriteNewObject()
     {
-        ArgumentNullException.ThrowIfNull(_storage);
+        _payloadBytes[0] = (byte)(_iteration++ % 255);
 
-        await using var payloadStream = new MemoryStream(_payloadBytes, writable: false);
-        await _storage.PutAsync(
-            Key,
-            payloadStream,
-            overwrite: true,
-            fileName: "benchmark.json",
-            extension: ".json",
-            mimeType: "application/json",
-            compressionType: CompressionType,
-            compressionLevel: CompressionLevel.Balanced);
+        var key = $"key-{_iteration}";
+        await using var ms = new MemoryStream(_payloadBytes);
+        await _storage!.PutAsync(key, ms, false, new ObjectInfo("data.bin"), CompressionType);
     }
 
-    [Benchmark]
-    [BenchmarkCategory("ReadAsync")]
-    public async Task ReadJsonAsync()
+    [Benchmark(Description = "Overwriting existing object (Update Metadata)")]
+    public async Task OverwriteExisting()
     {
-        ArgumentNullException.ThrowIfNull(_storage);
+        _payloadBytes[0] = (byte)(_iteration++ % 255);
 
-        await using var response = await _storage.GetAsync(Key);
-        await response.ContentStream.CopyToAsync(Stream.Null);
+        await using var ms = new MemoryStream(_payloadBytes);
+        await _storage!.PutAsync("constant-key", ms, true, new ObjectInfo("data.bin"), CompressionType);
     }
 
-    [Benchmark]
-    [BenchmarkCategory("ReadSync")]
-    public void ReadJsonSync()
+    [Benchmark(Description = "Random read (Simulates web traffic)")]
+    public void ReadRandom()
     {
-        ArgumentNullException.ThrowIfNull(_storage);
-
-        using var response = _storage.Get(Key);
+        var key = $"init-{Random.Shared.Next(0, 100)}";
+        using var response = _storage!.Get(key);
         response.ContentStream.CopyTo(Stream.Null);
     }
 }

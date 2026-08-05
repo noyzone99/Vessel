@@ -1,4 +1,4 @@
-using Moq;
+﻿using Moq;
 using System.Text;
 using Vessel.Logging;
 using Vessel.Metadata;
@@ -41,8 +41,8 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
         using var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object);
         var metadata = CreateTestMetadata("compressed-key", "compressed-hash");
 
-        await repository.UpsertAsync(metadata, CancellationToken.None);
-        var result = await repository.GetAsync("compressed-key", CancellationToken.None);
+        repository.Upsert(metadata);
+        var result = repository.Get("compressed-key");
 
         Assert.NotNull(result);
         Assert.Equal("compressed-key", result.Value.Key);
@@ -59,12 +59,12 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
 
         foreach (var metadata in metadataList)
         {
-            await repository.UpsertAsync(metadata, CancellationToken.None);
+            repository.Upsert(metadata);
         }
 
         foreach (var metadata in metadataList)
         {
-            var result = await repository.GetAsync(metadata.Key, CancellationToken.None);
+            var result = repository.Get(metadata.Key);
             Assert.NotNull(result);
             Assert.Equal(metadata.Key, result.Value.Key);
             Assert.Equal(metadata.Hash, result.Value.Hash);
@@ -76,12 +76,12 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
     {
         using var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object);
         var metadata = CreateTestMetadata("delete-compressed-key", "delete-compressed-hash");
-        await repository.UpsertAsync(metadata, CancellationToken.None);
+        repository.Upsert(metadata);
 
-        var deleteResult = await repository.DeleteAsync("delete-compressed-key", CancellationToken.None);
+        var deleteResult = repository.Delete("delete-compressed-key");
 
         Assert.True(deleteResult);
-        var getResult = await repository.GetAsync("delete-compressed-key", CancellationToken.None);
+        var getResult = repository.Get("delete-compressed-key");
         Assert.Null(getResult);
     }
 
@@ -90,9 +90,9 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
     {
         using var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object);
         var metadata = CreateTestMetadata("hash-ref-key", "unique-compressed-hash");
-        await repository.UpsertAsync(metadata, CancellationToken.None);
+        repository.Upsert(metadata);
 
-        var result = await repository.IsHashReferencedAsync("unique-compressed-hash", CancellationToken.None);
+        var result = repository.IsHashReferenced("unique-compressed-hash");
 
         Assert.True(result);
     }
@@ -101,9 +101,9 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
     public async Task IterateKeysAsync_WithCompression_ReturnsAllKeys()
     {
         using var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object);
-        await repository.UpsertAsync(CreateTestMetadata("prefix-1", "hash1"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("prefix-2", "hash2"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("other-1", "hash3"), CancellationToken.None);
+        repository.Upsert(CreateTestMetadata("prefix-1", "hash1"));
+        repository.Upsert(CreateTestMetadata("prefix-2", "hash2"));
+        repository.Upsert(CreateTestMetadata("other-1", "hash3"));
 
         var keys = new List<string>();
         await foreach (var key in repository.IterateKeysAsync("prefix-", CancellationToken.None))
@@ -126,7 +126,7 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
 
         foreach (var metadata in metadataList)
         {
-            await repository.UpsertAsync(metadata, CancellationToken.None);
+            repository.Upsert(metadata);
         }
 
         var keys = new List<string>();
@@ -147,12 +147,12 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
         const int operationCount = 50;
 
         var writeTasks = Enumerable.Range(1, operationCount)
-            .Select(i => repository.UpsertAsync(CreateTestMetadata($"concurrent-{i}", $"hash-{i}"), CancellationToken.None))
+            .Select(i => Task.Run(() => repository.Upsert(CreateTestMetadata($"concurrent-{i}", $"hash-{i}"))))
             .ToArray();
         await Task.WhenAll(writeTasks);
 
         var readTasks = Enumerable.Range(1, operationCount)
-            .Select(i => repository.GetAsync($"concurrent-{i}", CancellationToken.None))
+            .Select(i => Task.Run(() => repository.Get($"concurrent-{i}")))
             .ToArray();
         var results = await Task.WhenAll(readTasks);
 
@@ -181,8 +181,8 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
             CompressedSize: 10_000_000
         );
 
-        await repository.UpsertAsync(metadata, CancellationToken.None);
-        var result = await repository.GetAsync("large-metadata-key", CancellationToken.None);
+        repository.Upsert(metadata);
+        var result = repository.Get("large-metadata-key");
 
         Assert.NotNull(result);
         Assert.Equal(largeFileName, result.Value.FileName);

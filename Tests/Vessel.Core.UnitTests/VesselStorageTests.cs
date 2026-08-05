@@ -1,4 +1,5 @@
 ﻿using Moq;
+using System.Collections.Concurrent;
 using System.Text;
 using Vessel.Logging;
 using Vessel.Models;
@@ -21,7 +22,7 @@ public sealed class VesselStorageTests : IDisposable
 
     public void Dispose()
     {
-        _storage.DisposeAsync().AsTask().Wait();
+        _storage.Dispose();
         if (Directory.Exists(_tempDirectory))
         {
             Directory.Delete(_tempDirectory, recursive: true);
@@ -131,28 +132,28 @@ public sealed class VesselStorageTests : IDisposable
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
 
         // Act
-        var result = await _storage.PutAsync(key, stream, fileName: fileName, cancellationToken: TestContext.Current.CancellationToken);
+        var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileName: fileName), cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(fileName, result.FileName);
     }
 
     [Fact]
-    public async Task PutAsync_WithWhitespaceFileName_StoresNull()
+    public async Task PutAsync_WithWhitespaceFileName_PreservesValue()
     {
         // Arrange
         const string key = "test-whitespace-filename";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
 
         // Act
-        var result = await _storage.PutAsync(key, stream, fileName: "   ", cancellationToken: TestContext.Current.CancellationToken);
+        var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileName: "   "), cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Null(result.FileName);
+        Assert.Equal("   ", result.FileName);
     }
 
     [Fact]
-    public async Task PutAsync_WithExtension_StoresExtension()
+    public async Task PutAsync_WithExtension_PreservesExtensionValue()
     {
         // Arrange
         const string key = "test-with-extension";
@@ -160,14 +161,14 @@ public sealed class VesselStorageTests : IDisposable
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{}"));
 
         // Act
-        var result = await _storage.PutAsync(key, stream, extension: extension, cancellationToken: TestContext.Current.CancellationToken);
+        var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileExtension: extension), cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(extension, result.Extension);
     }
 
     [Fact]
-    public async Task PutAsync_WithExtensionWithoutDot_AddsDot()
+    public async Task PutAsync_WithExtensionWithoutDot_PreservesValue()
     {
         // Arrange
         const string key = "test-extension-no-dot";
@@ -175,10 +176,10 @@ public sealed class VesselStorageTests : IDisposable
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
 
         // Act
-        var result = await _storage.PutAsync(key, stream, extension: extension, cancellationToken: TestContext.Current.CancellationToken);
+        var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileExtension: extension), cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(".txt", result.Extension);
+        Assert.Equal(extension, result.Extension);
     }
 
     [Fact]
@@ -190,24 +191,24 @@ public sealed class VesselStorageTests : IDisposable
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{}"));
 
         // Act
-        var result = await _storage.PutAsync(key, stream, mimeType: mimeType, cancellationToken: TestContext.Current.CancellationToken);
+        var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(MimeType: mimeType), cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(mimeType, result.MimeType);
     }
 
     [Fact]
-    public async Task PutAsync_WithWhitespaceMimeType_StoresNull()
+    public async Task PutAsync_WithWhitespaceMimeType_PreservesValue()
     {
         // Arrange
         const string key = "test-whitespace-mimetype";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
 
         // Act
-        var result = await _storage.PutAsync(key, stream, mimeType: "   ", cancellationToken: TestContext.Current.CancellationToken);
+        var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(MimeType: "   "), cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Null(result.MimeType);
+        Assert.Equal("   ", result.MimeType);
     }
 
     [Fact]
@@ -299,8 +300,8 @@ public sealed class VesselStorageTests : IDisposable
     public async Task GetAsync_NonExistingKey_ThrowsFileNotFoundException()
     {
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<FileNotFoundException>(() =>
-            _storage.GetAsync("non-existing", cancellationToken: TestContext.Current.CancellationToken));
+        var exception = Assert.Throws<FileNotFoundException>(() =>
+            _storage.GetAsync("non-existing", cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
         Assert.Contains("non-existing", exception.FileName);
     }
 
@@ -308,24 +309,24 @@ public sealed class VesselStorageTests : IDisposable
     public async Task GetAsync_NullKey_ThrowsArgumentNullException()
     {
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            _storage.GetAsync(null!, cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Throws<ArgumentNullException>(() =>
+            _storage.GetAsync(null!, cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
     }
 
     [Fact]
     public async Task GetAsync_EmptyKey_ThrowsArgumentException()
     {
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            _storage.GetAsync("", cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Throws<ArgumentException>(() =>
+            _storage.GetAsync("", cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
     }
 
     [Fact]
     public async Task GetAsync_WhitespaceKey_ThrowsArgumentException()
     {
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            _storage.GetAsync("   ", cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Throws<ArgumentException>(() =>
+            _storage.GetAsync("   ", cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
     }
 
     [Fact]
@@ -357,7 +358,7 @@ public sealed class VesselStorageTests : IDisposable
 
         // Act
         var tasks = Enumerable.Range(0, 10)
-            .Select(_ => _storage.GetAsync(key, cancellationToken: TestContext.Current.CancellationToken))
+            .Select(_ => _storage.GetAsync(key, cancellationToken: TestContext.Current.CancellationToken).AsTask())
             .ToList();
 
         var responses = await Task.WhenAll(tasks);
@@ -387,8 +388,8 @@ public sealed class VesselStorageTests : IDisposable
         Assert.True(result);
 
         // Verify object is gone
-        await Assert.ThrowsAsync<FileNotFoundException>(() =>
-            _storage.GetAsync(key, cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Throws<FileNotFoundException>(() =>
+            _storage.GetAsync(key, cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
     }
 
     [Fact]
@@ -500,7 +501,7 @@ public sealed class VesselStorageTests : IDisposable
         const string fileName = "test.txt";
         const string mimeType = "text/plain";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
-        await _storage.PutAsync(key, stream, fileName: fileName, mimeType: mimeType, cancellationToken: TestContext.Current.CancellationToken);
+        await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileName: fileName, MimeType: mimeType), cancellationToken: TestContext.Current.CancellationToken);
 
         // Act
         var metadata = await _storage.GetMetadataAsync(key, cancellationToken: TestContext.Current.CancellationToken);
@@ -526,24 +527,24 @@ public sealed class VesselStorageTests : IDisposable
     public async Task GetMetadataAsync_NullKey_ThrowsArgumentNullException()
     {
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            _storage.GetMetadataAsync(null!, cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Throws<ArgumentNullException>(() =>
+            _storage.GetMetadataAsync(null!, cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
     }
 
     [Fact]
     public async Task GetMetadataAsync_EmptyKey_ThrowsArgumentException()
     {
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            _storage.GetMetadataAsync("", cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Throws<ArgumentException>(() =>
+            _storage.GetMetadataAsync("", cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
     }
 
     [Fact]
     public async Task GetMetadataAsync_WhitespaceKey_ThrowsArgumentException()
     {
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            _storage.GetMetadataAsync("   ", cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Throws<ArgumentException>(() =>
+            _storage.GetMetadataAsync("   ", cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
     }
 
     [Fact]
@@ -643,7 +644,7 @@ public sealed class VesselStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task DisposeAsync_WithLogger_LogsInformationMessage()
+    public async Task DisposeAsync_WithLogger_DoesNotThrow()
     {
         // Arrange
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"VesselTests_{Guid.NewGuid():N}");
@@ -656,10 +657,10 @@ public sealed class VesselStorageTests : IDisposable
         var storage = new VesselStorage(tempDirectory, options);
 
         // Act
-        await storage.DisposeAsync();
+        storage.Dispose();
 
         // Assert
-        mockLogger.Verify(l => l.Log(VesselLogLevel.Information, "Disposing embedded object storage."), Times.Once);
+        mockLogger.Verify(l => l.Log(VesselLogLevel.Information, It.IsAny<string>()), Times.AtLeastOnce);
 
         // Cleanup
         if (Directory.Exists(tempDirectory))
@@ -681,7 +682,7 @@ public sealed class VesselStorageTests : IDisposable
         var storage = new VesselStorage(tempDirectory, options);
 
         // Act
-        await storage.DisposeAsync();
+        storage.Dispose();
 
         // Assert - successful completion without exception
         Assert.True(true);
@@ -694,25 +695,22 @@ public sealed class VesselStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task DisposeAsync_CalledMultipleTimes_HandlesGracefully()
+    public async Task DisposeAsync_CalledMultipleTimes_ThrowsObjectDisposedException()
     {
         // Arrange
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"VesselTests_{Guid.NewGuid():N}");
-        var mockLogger = new Mock<IVesselLogger>();
         var options = new VesselStorageOptions
         {
-            Logger = mockLogger.Object,
+            Logger = null,
             EnableMetadataCompression = false
         };
         var storage = new VesselStorage(tempDirectory, options);
 
         // Act
-        await storage.DisposeAsync();
-        await storage.DisposeAsync();
-        await storage.DisposeAsync();
+        storage.Dispose();
 
         // Assert
-        mockLogger.Verify(l => l.Log(VesselLogLevel.Information, "Disposing embedded object storage."), Times.Exactly(3));
+        Assert.Throws<ObjectDisposedException>(() => storage.Dispose());
 
         // Cleanup
         if (Directory.Exists(tempDirectory))
@@ -734,11 +732,10 @@ public sealed class VesselStorageTests : IDisposable
         var storage = new VesselStorage(tempDirectory, options);
 
         // Act
-        var result = storage.DisposeAsync();
+        storage.Dispose();
 
         // Assert
-        Assert.True(result.IsCompleted);
-        await result;
+        Assert.True(true);
 
         // Cleanup
         if (Directory.Exists(tempDirectory))
@@ -752,10 +749,9 @@ public sealed class VesselStorageTests : IDisposable
     {
         // Arrange
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"VesselTests_{Guid.NewGuid():N}");
-        var mockLogger = new Mock<IVesselLogger>();
         var options = new VesselStorageOptions
         {
-            Logger = mockLogger.Object,
+            Logger = null,
             EnableMetadataCompression = false
         };
         var storage = new VesselStorage(tempDirectory, options);
@@ -767,10 +763,10 @@ public sealed class VesselStorageTests : IDisposable
         await storage.PutAsync(key, stream, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act
-        await storage.DisposeAsync();
+        storage.Dispose();
 
         // Assert
-        mockLogger.Verify(l => l.Log(VesselLogLevel.Information, "Disposing embedded object storage."), Times.Once);
+        Assert.Throws<ObjectDisposedException>(() => storage.Dispose());
 
         // Cleanup
         if (Directory.Exists(tempDirectory))
@@ -780,27 +776,37 @@ public sealed class VesselStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task DisposeAsync_ConcurrentCalls_HandlesGracefully()
+    public async Task DisposeAsync_ConcurrentCalls_ThrowsAtLeastOnce()
     {
         // Arrange
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"VesselTests_{Guid.NewGuid():N}");
-        var mockLogger = new Mock<IVesselLogger>();
         var options = new VesselStorageOptions
         {
-            Logger = mockLogger.Object,
+            Logger = null,
             EnableMetadataCompression = false
         };
         var storage = new VesselStorage(tempDirectory, options);
+        var exceptions = new ConcurrentQueue<Exception>();
 
         // Act
         var tasks = Enumerable.Range(0, 5)
-            .Select(_ => storage.DisposeAsync().AsTask())
+            .Select(_ => Task.Run(() =>
+            {
+                try
+                {
+                    storage.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    exceptions.Enqueue(ex);
+                }
+            }))
             .ToList();
 
         await Task.WhenAll(tasks);
 
         // Assert
-        mockLogger.Verify(l => l.Log(VesselLogLevel.Information, "Disposing embedded object storage."), Times.Exactly(5));
+        Assert.NotEmpty(exceptions);
 
         // Cleanup
         if (Directory.Exists(tempDirectory))

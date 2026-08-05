@@ -1,5 +1,4 @@
-﻿using System.Buffers;
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Vessel.Models;
@@ -13,8 +12,8 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
     {
         int requiredSize = GetRequiredByteCount(entry);
 
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(requiredSize);
-        Span<byte> destination = buffer;
+        var buffer = new byte[requiredSize];
+        Span<byte> destination = buffer.AsSpan();
 
         int bytesWritten = 0;
 

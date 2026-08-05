@@ -1,6 +1,7 @@
-using Moq;
+﻿using Moq;
 using System.Text;
 using Vessel.Logging;
+using Vessel.Models;
 
 namespace Vessel.Core.UnitTests;
 
@@ -36,7 +37,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
     [Fact]
     public async Task SwitchFromUncompressedToCompressed_RetrievesExistingObjects()
     {
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             await using var stream1 = new MemoryStream(Encoding.UTF8.GetBytes("Content 1"));
             await using var stream2 = new MemoryStream(Encoding.UTF8.GetBytes("Content 2"));
@@ -44,7 +45,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             await storage.PutAsync("key2", stream2, cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
             var response1 = await storage.GetAsync("key1", TestContext.Current.CancellationToken);
             var response2 = await storage.GetAsync("key2", TestContext.Current.CancellationToken);
@@ -62,7 +63,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
     [Fact]
     public async Task SwitchFromCompressedToUncompressed_RetrievesExistingObjects()
     {
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
             await using var stream1 = new MemoryStream(Encoding.UTF8.GetBytes("Content A"));
             await using var stream2 = new MemoryStream(Encoding.UTF8.GetBytes("Content B"));
@@ -70,7 +71,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             await storage.PutAsync("keyB", stream2, cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             var response1 = await storage.GetAsync("keyA", TestContext.Current.CancellationToken);
             var response2 = await storage.GetAsync("keyB", TestContext.Current.CancellationToken);
@@ -88,19 +89,19 @@ public sealed class VesselStoragePersistenceTests : IDisposable
     [Fact]
     public async Task MultipleCompressionSwitches_GetAllKeysReturnsAllObjects()
     {
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Uncompressed content"));
             await storage.PutAsync("uncompressed-key", stream, cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Compressed content"));
             await storage.PutAsync("compressed-key", stream, cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Final content"));
             await storage.PutAsync("final-key", stream, cancellationToken: TestContext.Current.CancellationToken);
@@ -121,32 +122,32 @@ public sealed class VesselStoragePersistenceTests : IDisposable
     [Fact]
     public async Task SwitchCompression_DeleteWorks()
     {
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Content to delete"));
             await storage.PutAsync("delete-key", stream, cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
             var deleted = await storage.DeleteAsync("delete-key", TestContext.Current.CancellationToken);
             Assert.True(deleted);
 
-            await Assert.ThrowsAsync<FileNotFoundException>(() =>
-                storage.GetAsync("delete-key", TestContext.Current.CancellationToken));
+            Assert.Throws<FileNotFoundException>(() =>
+                storage.GetAsync("delete-key", TestContext.Current.CancellationToken).GetAwaiter().GetResult());
         }
     }
 
     [Fact]
     public async Task SwitchCompression_UpdateExistingObject()
     {
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Original content"));
             await storage.PutAsync("update-key", stream, cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Updated content"));
             var updated = await storage.PutAsync("update-key", stream, overwrite: true, cancellationToken: TestContext.Current.CancellationToken);
@@ -162,13 +163,13 @@ public sealed class VesselStoragePersistenceTests : IDisposable
     [Fact]
     public async Task SwitchCompression_GetMetadataWorks()
     {
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Test content"));
-            await storage.PutAsync("metadata-key", stream, fileName: "test.txt", extension: ".txt", mimeType: "text/plain", cancellationToken: TestContext.Current.CancellationToken);
+            await storage.PutAsync("metadata-key", stream, fileInfo: new ObjectInfo(FileName: "test.txt", FileExtension: ".txt", MimeType: "text/plain"), cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
             var metadata = await storage.GetMetadataAsync("metadata-key", TestContext.Current.CancellationToken);
 
@@ -185,7 +186,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
     {
         const int objectCount = 50;
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             for (int i = 0; i < objectCount / 2; i++)
             {
@@ -194,7 +195,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             }
         }
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
             for (int i = objectCount / 2; i < objectCount; i++)
             {
@@ -203,7 +204,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             }
         }
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             var keys = new List<string>();
             await foreach (var key in storage.GetAllKeysAsync(cancellationToken: TestContext.Current.CancellationToken))
@@ -228,7 +229,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
     [Fact]
     public async Task SwitchCompression_PrefixQuery_WorksCorrectly()
     {
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             await using var stream1 = new MemoryStream(Encoding.UTF8.GetBytes("Content 1"));
             await using var stream2 = new MemoryStream(Encoding.UTF8.GetBytes("Content 2"));
@@ -236,7 +237,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             await storage.PutAsync("users/jane", stream2, cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Admin content"));
             await storage.PutAsync("admins/alice", stream, cancellationToken: TestContext.Current.CancellationToken);
@@ -259,13 +260,13 @@ public sealed class VesselStoragePersistenceTests : IDisposable
     {
         const string duplicateContent = "Duplicate content for testing";
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(duplicateContent));
             await storage.PutAsync("key1", stream, cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(duplicateContent));
             var metadata2 = await storage.PutAsync("key2", stream, cancellationToken: TestContext.Current.CancellationToken);
@@ -286,7 +287,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
     [Fact]
     public async Task SwitchCompression_WithDifferentBlobCompressionTypes_AllRetrievable()
     {
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             await using var stream1 = new MemoryStream(Encoding.UTF8.GetBytes(new string('A', 5000)));
             await using var stream2 = new MemoryStream(Encoding.UTF8.GetBytes(new string('B', 5000)));
@@ -294,7 +295,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             await storage.PutAsync("key2", stream2, compressionType: CompressionType.LZ4, cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        await using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
             var response1 = await storage.GetAsync("key1", TestContext.Current.CancellationToken);
             var response2 = await storage.GetAsync("key2", TestContext.Current.CancellationToken);

@@ -1,4 +1,4 @@
-using Moq;
+﻿using Moq;
 using System.Text;
 using Vessel.Logging;
 using Vessel.Metadata;
@@ -44,16 +44,16 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
-            await repository.UpsertAsync(metadata1, CancellationToken.None);
-            await repository.UpsertAsync(metadata2, CancellationToken.None);
-            await repository.UpsertAsync(metadata3, CancellationToken.None);
+            repository.Upsert(metadata1);
+            repository.Upsert(metadata2);
+            repository.Upsert(metadata3);
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object))
         {
-            var result1 = await repository.GetAsync("key1", CancellationToken.None);
-            var result2 = await repository.GetAsync("key2", CancellationToken.None);
-            var result3 = await repository.GetAsync("key3", CancellationToken.None);
+            var result1 = repository.Get("key1");
+            var result2 = repository.Get("key2");
+            var result3 = repository.Get("key3");
 
             Assert.NotNull(result1);
             Assert.Equal("key1", result1.Value.Key);
@@ -74,16 +74,16 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object))
         {
-            await repository.UpsertAsync(metadata1, CancellationToken.None);
-            await repository.UpsertAsync(metadata2, CancellationToken.None);
-            await repository.UpsertAsync(metadata3, CancellationToken.None);
+            repository.Upsert(metadata1);
+            repository.Upsert(metadata2);
+            repository.Upsert(metadata3);
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
-            var result1 = await repository.GetAsync("key1", CancellationToken.None);
-            var result2 = await repository.GetAsync("key2", CancellationToken.None);
-            var result3 = await repository.GetAsync("key3", CancellationToken.None);
+            var result1 = repository.Get("key1");
+            var result2 = repository.Get("key2");
+            var result3 = repository.Get("key3");
 
             Assert.NotNull(result1);
             Assert.Equal("key1", result1.Value.Key);
@@ -104,21 +104,21 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
-            await repository.UpsertAsync(uncompressedMetadata, CancellationToken.None);
+            repository.Upsert(uncompressedMetadata);
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object))
         {
-            await repository.UpsertAsync(compressedMetadata, CancellationToken.None);
+            repository.Upsert(compressedMetadata);
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
-            await repository.UpsertAsync(finalMetadata, CancellationToken.None);
+            repository.Upsert(finalMetadata);
 
-            var result1 = await repository.GetAsync("uncompressed-key", CancellationToken.None);
-            var result2 = await repository.GetAsync("compressed-key", CancellationToken.None);
-            var result3 = await repository.GetAsync("final-key", CancellationToken.None);
+            var result1 = repository.Get("uncompressed-key");
+            var result2 = repository.Get("compressed-key");
+            var result3 = repository.Get("final-key");
 
             Assert.NotNull(result1);
             Assert.Equal("uncompressed-hash", result1.Value.Hash);
@@ -134,14 +134,14 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
     {
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
-            await repository.UpsertAsync(CreateTestMetadata("key1", "hash1"), CancellationToken.None);
-            await repository.UpsertAsync(CreateTestMetadata("key2", "hash2"), CancellationToken.None);
+            repository.Upsert(CreateTestMetadata("key1", "hash1"));
+            repository.Upsert(CreateTestMetadata("key2", "hash2"));
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object))
         {
-            await repository.UpsertAsync(CreateTestMetadata("key3", "hash3"), CancellationToken.None);
-            await repository.UpsertAsync(CreateTestMetadata("key4", "hash4"), CancellationToken.None);
+            repository.Upsert(CreateTestMetadata("key3", "hash3"));
+            repository.Upsert(CreateTestMetadata("key4", "hash4"));
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
@@ -165,13 +165,13 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
     {
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
-            await repository.UpsertAsync(CreateTestMetadata("key1", "hash1"), CancellationToken.None);
-            await repository.UpsertAsync(CreateTestMetadata("key2", "hash2"), CancellationToken.None);
+            repository.Upsert(CreateTestMetadata("key1", "hash1"));
+            repository.Upsert(CreateTestMetadata("key2", "hash2"));
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object))
         {
-            await repository.UpsertAsync(CreateTestMetadata("key3", "hash3"), CancellationToken.None);
+            repository.Upsert(CreateTestMetadata("key3", "hash3"));
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
@@ -194,12 +194,12 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
     {
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
-            await repository.UpsertAsync(CreateTestMetadata("key1", "hash1"), CancellationToken.None);
+            repository.Upsert(CreateTestMetadata("key1", "hash1"));
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object))
         {
-            var isReferenced = await repository.IsHashReferencedAsync("hash1", CancellationToken.None);
+            var isReferenced = repository.IsHashReferenced("hash1");
             Assert.True(isReferenced);
         }
     }
@@ -209,15 +209,15 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
     {
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
-            await repository.UpsertAsync(CreateTestMetadata("delete-key", "delete-hash"), CancellationToken.None);
+            repository.Upsert(CreateTestMetadata("delete-key", "delete-hash"));
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object))
         {
-            var deleted = await repository.DeleteAsync("delete-key", CancellationToken.None);
+            var deleted = repository.Delete("delete-key");
             Assert.True(deleted);
 
-            var result = await repository.GetAsync("delete-key", CancellationToken.None);
+            var result = repository.Get("delete-key");
             Assert.Null(result);
         }
     }
@@ -230,14 +230,14 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
-            await repository.UpsertAsync(originalMetadata, CancellationToken.None);
+            repository.Upsert(originalMetadata);
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object))
         {
-            await repository.UpsertAsync(updatedMetadata, CancellationToken.None);
+            repository.Upsert(updatedMetadata);
 
-            var result = await repository.GetAsync("update-key", CancellationToken.None);
+            var result = repository.Get("update-key");
             Assert.NotNull(result);
             Assert.Equal("updated-hash", result.Value.Hash);
             Assert.Equal(200, result.Value.Size);
@@ -253,7 +253,7 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
         {
             for (int i = 0; i < entryCount / 2; i++)
             {
-                await repository.UpsertAsync(CreateTestMetadata($"key-{i}", $"hash-{i}"), CancellationToken.None);
+                repository.Upsert(CreateTestMetadata($"key-{i}", $"hash-{i}"));
             }
         }
 
@@ -261,7 +261,7 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
         {
             for (int i = entryCount / 2; i < entryCount; i++)
             {
-                await repository.UpsertAsync(CreateTestMetadata($"key-{i}", $"hash-{i}"), CancellationToken.None);
+                repository.Upsert(CreateTestMetadata($"key-{i}", $"hash-{i}"));
             }
         }
 
@@ -277,7 +277,7 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
 
             for (int i = 0; i < entryCount; i++)
             {
-                var result = await repository.GetAsync($"key-{i}", CancellationToken.None);
+                var result = repository.Get($"key-{i}");
                 Assert.NotNull(result);
                 Assert.Equal($"hash-{i}", result.Value.Hash);
             }
@@ -289,13 +289,13 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
     {
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
-            await repository.UpsertAsync(CreateTestMetadata("users/john", "hash1"), CancellationToken.None);
-            await repository.UpsertAsync(CreateTestMetadata("users/jane", "hash2"), CancellationToken.None);
+            repository.Upsert(CreateTestMetadata("users/john", "hash1"));
+            repository.Upsert(CreateTestMetadata("users/jane", "hash2"));
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object))
         {
-            await repository.UpsertAsync(CreateTestMetadata("admins/bob", "hash3"), CancellationToken.None);
+            repository.Upsert(CreateTestMetadata("admins/bob", "hash3"));
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))

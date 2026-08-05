@@ -1,6 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
-using System.Text;
 using Vessel.Logging;
 using Vessel.Metadata;
 using Vessel.Models;
@@ -31,7 +29,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
     private readonly SemaphoreSlim[] _keyLocks = [.. Enumerable.Range(0, 32).Select(_ => new SemaphoreSlim(1, 1))];
 
     /// <inheritdoc/>
-    public async Task<ObjectMetadata> PutAsync(string key, Stream contentStream, bool overwrite = false, string? fileName = null, string? extension = null, string? mimeType = null, CompressionType compressionType = CompressionType.None, CompressionLevel compressionLevel = CompressionLevel.Balanced, CancellationToken cancellationToken = default)
+    public async Task<ObjectMetadata> PutAsync(string key, Stream contentStream, bool overwrite = false, ObjectInfo fileInfo = default, CompressionType compressionType = CompressionType.None, CompressionLevel compressionLevel = CompressionLevel.Balanced, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentNullException.ThrowIfNull(contentStream);
@@ -43,28 +41,26 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
 
         try
         {
-            var existingMetadata = await _metadataRepository.GetAsync(key, cancellationToken).ConfigureAwait(false);
+            var existingMetadata = _metadataRepository.Get(key);
             if (existingMetadata is not null && !overwrite)
             {
                 _logger?.Log(VesselLogLevel.Warning, $"Refusing to overwrite existing object '{key}'.");
                 throw new InvalidOperationException($"Object '{key}' already exists.");
             }
+
             var (hash, size, compressedSize) = await _blobStorageEngine.WriteBlobAsync(contentStream, compressionType, compressionLevel, cancellationToken).ConfigureAwait(false);
+            var metadata = new ObjectMetadata(key, hash, size, compressionType, hash, DateTimeOffset.UtcNow, fileInfo.FileName, fileInfo.FileExtension, fileInfo.MimeType, compressedSize);
 
-            var normalizedFileName = string.IsNullOrWhiteSpace(fileName) ? null : fileName.Trim();
-            var normalizedExtension = ResolveExtension(normalizedFileName, extension);
-            var normalizedMimeType = string.IsNullOrWhiteSpace(mimeType) ? null : mimeType.Trim();
-            var metadata = new ObjectMetadata(key, hash, size, compressionType, hash, DateTimeOffset.UtcNow, normalizedFileName, normalizedExtension, normalizedMimeType, compressedSize);
-
-            await _metadataRepository.UpsertAsync(metadata, cancellationToken).ConfigureAwait(false);
+            _metadataRepository.Upsert(metadata);
 
             if (existingMetadata is not null && !string.Equals(existingMetadata.Value.Hash, hash, StringComparison.Ordinal))
             {
-                var isStillReferenced = await _metadataRepository.IsHashReferencedAsync(existingMetadata.Value.Hash, cancellationToken).ConfigureAwait(false);
+                var isStillReferenced = _metadataRepository.IsHashReferenced(existingMetadata.Value.Hash);
                 if (!isStillReferenced)
                 {
                     _logger?.Log(VesselLogLevel.Information, $"Deleting superseded blob '{existingMetadata.Value.Hash}' for object '{key}'.");
                     _blobStorageEngine.DeleteBlob(existingMetadata.Value.Hash);
+                    //TODO: try with Task.Run(() => _blobStorageEngine.DeleteBlob(existingMetadata.Value.Hash));
                 }
             }
 
@@ -87,7 +83,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
-        var metadata = await _metadataRepository.GetAsync(key, cancellationToken).ConfigureAwait(false);
+        var metadata = _metadataRepository.Get(key);
         if (metadata is null)
         {
             _logger?.Log(VesselLogLevel.Warning, $"Attempted to read missing object '{key}'.");
@@ -131,21 +127,21 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
 
         try
         {
-            var metadata = await _metadataRepository.GetAsync(key, cancellationToken).ConfigureAwait(false);
+            var metadata = _metadataRepository.Get(key);
             if (metadata is null)
             {
                 _logger?.Log(VesselLogLevel.Information, $"Delete request ignored because object '{key}' was not found.");
                 return false;
             }
 
-            var deleted = await _metadataRepository.DeleteAsync(key, cancellationToken).ConfigureAwait(false);
+            var deleted = _metadataRepository.Delete(key);
             if (!deleted)
             {
                 _logger?.Log(VesselLogLevel.Warning, $"Delete operation reported failure for object '{key}'.");
                 return false;
             }
 
-            var isStillReferenced = await _metadataRepository.IsHashReferencedAsync(metadata.Value.Hash, cancellationToken).ConfigureAwait(false);
+            var isStillReferenced = _metadataRepository.IsHashReferenced(metadata.Value.Hash);
             if (!isStillReferenced)
             {
                 _logger?.Log(VesselLogLevel.Information, $"Deleting unreferenced blob '{metadata.Value.Hash}' after removing object '{key}'.");
@@ -167,11 +163,11 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
     }
 
     /// <inheritdoc/>
-    public ValueTask<ObjectMetadata?> GetMetadataAsync(string key, CancellationToken cancellationToken = default)
+    public async ValueTask<ObjectMetadata?> GetMetadataAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         _logger?.Log(VesselLogLevel.Debug, $"Fetching metadata for object '{key}'.");
-        return _metadataRepository.GetAsync(key, cancellationToken);
+        return _metadataRepository.Get(key);
     }
 
     /// <inheritdoc/>
@@ -199,39 +195,10 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
         }
     }
 
-    /// <inheritdoc/>
-    public IEnumerable<string> GetAllKeys(string prefix = "")
-    {
-        ArgumentNullException.ThrowIfNull(prefix);
-        return _metadataRepository.IterateKeys(prefix);
-    }
-
     private SemaphoreSlim GetKeyLock(string key)
     {
-        var hashBytes = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        hashBytes.AppendData(Encoding.UTF8.GetBytes(key));
-        var hash = BitConverter.ToInt32(hashBytes.GetHashAndReset(), 0);
-        if (hash == int.MinValue)
-        {
-            hash = 0;
-        }
-
-        return _keyLocks[Math.Abs(hash) % _keyLocks.Length];
-    }
-
-    private static string? ResolveExtension(string? fileName, string? extension)
-    {
-        if (!string.IsNullOrWhiteSpace(extension))
-        {
-            return extension.StartsWith('.') ? extension : $".{extension}";
-        }
-
-        if (string.IsNullOrWhiteSpace(fileName))
-        {
-            return null;
-        }
-
-        return Path.GetExtension(fileName);
+        uint hash = (uint)string.GetHashCode(key, StringComparison.Ordinal);
+        return _keyLocks[hash % _keyLocks.Length];
     }
 
     /// <inheritdoc/>

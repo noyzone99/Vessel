@@ -26,7 +26,7 @@ public interface IVesselStorage : IDisposable
     /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> is null, empty, or whitespace.</exception>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="contentStream"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">Thrown when the object already exists and <paramref name="overwrite"/> is <see langword="false"/>.</exception>
-    Task<ObjectMetadata> PutAsync(string key, Stream contentStream, bool overwrite = false, string? fileName = null, string? extension = null, string? mimeType = null, CompressionType compressionType = CompressionType.None, CompressionLevel compressionLevel = CompressionLevel.Balanced, CancellationToken cancellationToken = default);
+    Task<ObjectMetadata> PutAsync(string key, Stream contentStream, bool overwrite = false, ObjectInfo fileInfo = default, CompressionType compressionType = CompressionType.None, CompressionLevel compressionLevel = CompressionLevel.Balanced, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves the object payload and metadata for the specified logical key.
@@ -83,12 +83,4 @@ public interface IVesselStorage : IDisposable
     /// <returns>An asynchronous enumeration of matching keys.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="prefix"/> is <see langword="null"/>.</exception>
     IAsyncEnumerable<string> GetAllKeysAsync(string prefix = "", CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Enumerates logical object keys whose names match the supplied prefix.
-    /// </summary>
-    /// <param name="prefix">An optional prefix used to filter the set of keys.</param>
-    /// <returns>An asynchronous enumeration of matching keys.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="prefix"/> is <see langword="null"/>.</exception>
-    IEnumerable<string> GetAllKeys(string prefix = "");
 }

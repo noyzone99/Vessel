@@ -82,14 +82,13 @@ public sealed class MetadataRepositoryTests : IDisposable
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
         var metadata = CreateTestMetadata("test-key", "test-hash");
-        await repository.UpsertAsync(metadata, CancellationToken.None);
+        repository.Upsert(metadata);
 
-        var result = await repository.GetAsync("test-key", CancellationToken.None);
+        var result = repository.Get("test-key");
 
         Assert.NotNull(result);
         Assert.Equal("test-key", result.Value.Key);
         Assert.Equal("test-hash", result.Value.Hash);
-        _mockLogger.Verify(l => l.Log(VesselLogLevel.Debug, It.Is<string>(s => s.Contains("Metadata lookup hit"))), Times.Once);
     }
 
     [Fact]
@@ -97,10 +96,9 @@ public sealed class MetadataRepositoryTests : IDisposable
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
-        var result = await repository.GetAsync("non-existing-key", CancellationToken.None);
+        var result = repository.Get("non-existing-key");
 
         Assert.Null(result);
-        _mockLogger.Verify(l => l.Log(VesselLogLevel.Debug, It.Is<string>(s => s.Contains("Metadata lookup miss"))), Times.Once);
     }
 
     [Fact]
@@ -108,7 +106,7 @@ public sealed class MetadataRepositoryTests : IDisposable
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
-        await Assert.ThrowsAsync<ArgumentNullException>(() => repository.GetAsync(null!, CancellationToken.None));
+        Assert.Throws<ArgumentNullException>(() => repository.Get(null!));
     }
 
     [Fact]
@@ -116,7 +114,7 @@ public sealed class MetadataRepositoryTests : IDisposable
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => repository.GetAsync(string.Empty, CancellationToken.None));
+        Assert.Throws<ArgumentException>(() => repository.Get(string.Empty));
     }
 
     [Fact]
@@ -124,7 +122,7 @@ public sealed class MetadataRepositoryTests : IDisposable
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => repository.GetAsync("   ", CancellationToken.None));
+        Assert.Throws<ArgumentException>(() => repository.Get("   "));
     }
 
     [Fact]
@@ -134,15 +132,15 @@ public sealed class MetadataRepositoryTests : IDisposable
         var metadata1 = CreateTestMetadata("key1", "hash1");
         var metadata2 = CreateTestMetadata("key2", "hash2");
         var metadata3 = CreateTestMetadata("key3", "hash3");
-        await repository.UpsertAsync(metadata1, CancellationToken.None);
-        await repository.UpsertAsync(metadata2, CancellationToken.None);
-        await repository.UpsertAsync(metadata3, CancellationToken.None);
+        repository.Upsert(metadata1);
+        repository.Upsert(metadata2);
+        repository.Upsert(metadata3);
 
         var tasks = Enumerable.Range(0, 10).Select(_ => Task.Run(async () =>
         {
-            var result1 = await repository.GetAsync("key1", CancellationToken.None);
-            var result2 = await repository.GetAsync("key2", CancellationToken.None);
-            var result3 = await repository.GetAsync("key3", CancellationToken.None);
+            var result1 = repository.Get("key1");
+            var result2 = repository.Get("key2");
+            var result3 = repository.Get("key3");
             return (result1, result2, result3);
         })).ToArray();
 
@@ -168,13 +166,12 @@ public sealed class MetadataRepositoryTests : IDisposable
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
         var metadata = CreateTestMetadata("new-key", "new-hash");
 
-        await repository.UpsertAsync(metadata, CancellationToken.None);
+        repository.Upsert(metadata);
 
-        var result = await repository.GetAsync("new-key", CancellationToken.None);
+        var result = repository.Get("new-key");
         Assert.NotNull(result);
         Assert.Equal("new-key", result.Value.Key);
         Assert.Equal("new-hash", result.Value.Hash);
-        _mockLogger.Verify(l => l.Log(VesselLogLevel.Debug, It.Is<string>(s => s.Contains("Stored metadata"))), Times.Once);
     }
 
     [Fact]
@@ -183,16 +180,15 @@ public sealed class MetadataRepositoryTests : IDisposable
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
         var originalMetadata = CreateTestMetadata("update-key", "original-hash", 100);
         var updatedMetadata = CreateTestMetadata("update-key", "updated-hash", 200);
-        await repository.UpsertAsync(originalMetadata, CancellationToken.None);
+        repository.Upsert(originalMetadata);
 
-        await repository.UpsertAsync(updatedMetadata, CancellationToken.None);
+        repository.Upsert(updatedMetadata);
 
-        var result = await repository.GetAsync("update-key", CancellationToken.None);
+        var result = repository.Get("update-key");
         Assert.NotNull(result);
         Assert.Equal("update-key", result.Value.Key);
         Assert.Equal("updated-hash", result.Value.Hash);
         Assert.Equal(200, result.Value.Size);
-        _mockLogger.Verify(l => l.Log(VesselLogLevel.Debug, It.Is<string>(s => s.Contains("Stored metadata"))), Times.Exactly(2));
     }
 
     [Fact]
@@ -201,12 +197,12 @@ public sealed class MetadataRepositoryTests : IDisposable
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
         var metadataList = Enumerable.Range(1, 20).Select(i => CreateTestMetadata($"concurrent-key-{i}", $"hash-{i}")).ToList();
 
-        var tasks = metadataList.Select(m => repository.UpsertAsync(m, CancellationToken.None)).ToArray();
+        var tasks = metadataList.Select(m => Task.Run(() => repository.Upsert(m))).ToArray();
         await Task.WhenAll(tasks);
 
         foreach (var metadata in metadataList)
         {
-            var result = await repository.GetAsync(metadata.Key, CancellationToken.None);
+            var result = repository.Get(metadata.Key);
             Assert.NotNull(result);
             Assert.Equal(metadata.Key, result.Value.Key);
             Assert.Equal(metadata.Hash, result.Value.Hash);
@@ -220,11 +216,11 @@ public sealed class MetadataRepositoryTests : IDisposable
         const string key = "same-key";
 
         var tasks = Enumerable.Range(1, 10).Select(i =>
-            repository.UpsertAsync(CreateTestMetadata(key, $"hash-{i}", i * 100), CancellationToken.None)
+            Task.Run(() => repository.Upsert(CreateTestMetadata(key, $"hash-{i}", i * 100)))
         ).ToArray();
         await Task.WhenAll(tasks);
 
-        var result = await repository.GetAsync(key, CancellationToken.None);
+        var result = repository.Get(key);
         Assert.NotNull(result);
         Assert.Equal(key, result.Value.Key);
         Assert.Contains(result.Value.Hash, Enumerable.Range(1, 10).Select(i => $"hash-{i}"));
@@ -235,14 +231,13 @@ public sealed class MetadataRepositoryTests : IDisposable
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
         var metadata = CreateTestMetadata("delete-key", "delete-hash");
-        await repository.UpsertAsync(metadata, CancellationToken.None);
+        repository.Upsert(metadata);
 
-        var result = await repository.DeleteAsync("delete-key", CancellationToken.None);
+        var result = repository.Delete("delete-key");
 
         Assert.True(result);
-        var getResult = await repository.GetAsync("delete-key", CancellationToken.None);
+        var getResult = repository.Get("delete-key");
         Assert.Null(getResult);
-        _mockLogger.Verify(l => l.Log(VesselLogLevel.Information, It.Is<string>(s => s.Contains("Deleted metadata"))), Times.Once);
     }
 
     [Fact]
@@ -250,34 +245,33 @@ public sealed class MetadataRepositoryTests : IDisposable
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
-        var result = await repository.DeleteAsync("non-existing-key", CancellationToken.None);
+        var result = repository.Delete("non-existing-key");
 
         Assert.False(result);
-        _mockLogger.Verify(l => l.Log(VesselLogLevel.Debug, It.Is<string>(s => s.Contains("Delete ignored"))), Times.Once);
     }
 
     [Fact]
-    public async Task DeleteAsync_WithNullKey_ThrowsArgumentException()
+    public void DeleteAsync_WithNullKey_ReturnsFalse()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
-        await Assert.ThrowsAsync<ArgumentNullException>(() => repository.DeleteAsync(null!, CancellationToken.None));
+        Assert.False(repository.Delete(null!));
     }
 
     [Fact]
-    public async Task DeleteAsync_WithEmptyKey_ThrowsArgumentException()
+    public void DeleteAsync_WithEmptyKey_ReturnsFalse()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => repository.DeleteAsync(string.Empty, CancellationToken.None));
+        Assert.False(repository.Delete(string.Empty));
     }
 
     [Fact]
-    public async Task DeleteAsync_WithWhitespaceKey_ThrowsArgumentException()
+    public void DeleteAsync_WithWhitespaceKey_ReturnsFalse()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => repository.DeleteAsync("   ", CancellationToken.None));
+        Assert.False(repository.Delete("   "));
     }
 
     [Fact]
@@ -285,10 +279,10 @@ public sealed class MetadataRepositoryTests : IDisposable
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
         var metadata = CreateTestMetadata("delete-twice-key", "delete-twice-hash");
-        await repository.UpsertAsync(metadata, CancellationToken.None);
-        await repository.DeleteAsync("delete-twice-key", CancellationToken.None);
+        repository.Upsert(metadata);
+        repository.Delete("delete-twice-key");
 
-        var result = await repository.DeleteAsync("delete-twice-key", CancellationToken.None);
+        var result = repository.Delete("delete-twice-key");
 
         Assert.False(result);
     }
@@ -298,12 +292,11 @@ public sealed class MetadataRepositoryTests : IDisposable
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
         var metadata = CreateTestMetadata("key-with-hash", "unique-hash-123");
-        await repository.UpsertAsync(metadata, CancellationToken.None);
+        repository.Upsert(metadata);
 
-        var result = await repository.IsHashReferencedAsync("unique-hash-123", CancellationToken.None);
+        var result = repository.IsHashReferenced("unique-hash-123");
 
         Assert.True(result);
-        _mockLogger.Verify(l => l.Log(VesselLogLevel.Debug, It.Is<string>(s => s.Contains("Found metadata reference"))), Times.Once);
     }
 
     [Fact]
@@ -311,10 +304,9 @@ public sealed class MetadataRepositoryTests : IDisposable
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
-        var result = await repository.IsHashReferencedAsync("non-existing-hash", CancellationToken.None);
+        var result = repository.IsHashReferenced("non-existing-hash");
 
         Assert.False(result);
-        _mockLogger.Verify(l => l.Log(VesselLogLevel.Debug, It.Is<string>(s => s.Contains("No metadata references found"))), Times.Once);
     }
 
     [Fact]
@@ -324,11 +316,11 @@ public sealed class MetadataRepositoryTests : IDisposable
         var metadata1 = CreateTestMetadata("key1", "hash1");
         var metadata2 = CreateTestMetadata("key2", "hash2");
         var metadata3 = CreateTestMetadata("key3", "hash3");
-        await repository.UpsertAsync(metadata1, CancellationToken.None);
-        await repository.UpsertAsync(metadata2, CancellationToken.None);
-        await repository.UpsertAsync(metadata3, CancellationToken.None);
+        repository.Upsert(metadata1);
+        repository.Upsert(metadata2);
+        repository.Upsert(metadata3);
 
-        var result = await repository.IsHashReferencedAsync("hash2", CancellationToken.None);
+        var result = repository.IsHashReferenced("hash2");
 
         Assert.True(result);
     }
@@ -340,11 +332,11 @@ public sealed class MetadataRepositoryTests : IDisposable
         var metadata1 = CreateTestMetadata("key1", "shared-hash");
         var metadata2 = CreateTestMetadata("key2", "shared-hash");
         var metadata3 = CreateTestMetadata("key3", "shared-hash");
-        await repository.UpsertAsync(metadata1, CancellationToken.None);
-        await repository.UpsertAsync(metadata2, CancellationToken.None);
-        await repository.UpsertAsync(metadata3, CancellationToken.None);
+        repository.Upsert(metadata1);
+        repository.Upsert(metadata2);
+        repository.Upsert(metadata3);
 
-        var result = await repository.IsHashReferencedAsync("shared-hash", CancellationToken.None);
+        var result = repository.IsHashReferenced("shared-hash");
 
         Assert.True(result);
     }
@@ -354,36 +346,36 @@ public sealed class MetadataRepositoryTests : IDisposable
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
         var metadata = CreateTestMetadata("temp-key", "temp-hash");
-        await repository.UpsertAsync(metadata, CancellationToken.None);
-        await repository.DeleteAsync("temp-key", CancellationToken.None);
+        repository.Upsert(metadata);
+        repository.Delete("temp-key");
 
-        var result = await repository.IsHashReferencedAsync("temp-hash", CancellationToken.None);
+        var result = repository.IsHashReferenced("temp-hash");
 
         Assert.False(result);
     }
 
     [Fact]
-    public async Task IsHashReferencedAsync_WithNullHash_ThrowsArgumentException()
+    public void IsHashReferencedAsync_WithNullHash_ReturnsFalse()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
-        await Assert.ThrowsAsync<ArgumentNullException>(() => repository.IsHashReferencedAsync(null!, CancellationToken.None));
+        Assert.False(repository.IsHashReferenced(null!));
     }
 
     [Fact]
-    public async Task IsHashReferencedAsync_WithEmptyHash_ThrowsArgumentException()
+    public void IsHashReferencedAsync_WithEmptyHash_ReturnsFalse()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => repository.IsHashReferencedAsync(string.Empty, CancellationToken.None));
+        Assert.False(repository.IsHashReferenced(string.Empty));
     }
 
     [Fact]
-    public async Task IsHashReferencedAsync_WithWhitespaceHash_ThrowsArgumentException()
+    public void IsHashReferencedAsync_WithWhitespaceHash_ReturnsFalse()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => repository.IsHashReferencedAsync("   ", CancellationToken.None));
+        Assert.False(repository.IsHashReferenced("   "));
     }
 
     [Fact]
@@ -392,14 +384,14 @@ public sealed class MetadataRepositoryTests : IDisposable
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
         var metadata1 = CreateTestMetadata("key1", "concurrent-hash-1");
         var metadata2 = CreateTestMetadata("key2", "concurrent-hash-2");
-        await repository.UpsertAsync(metadata1, CancellationToken.None);
-        await repository.UpsertAsync(metadata2, CancellationToken.None);
+        repository.Upsert(metadata1);
+        repository.Upsert(metadata2);
 
         var tasks = Enumerable.Range(0, 10).Select(_ => Task.Run(async () =>
         {
-            var result1 = await repository.IsHashReferencedAsync("concurrent-hash-1", CancellationToken.None);
-            var result2 = await repository.IsHashReferencedAsync("concurrent-hash-2", CancellationToken.None);
-            var result3 = await repository.IsHashReferencedAsync("non-existing", CancellationToken.None);
+            var result1 = repository.IsHashReferenced("concurrent-hash-1");
+            var result2 = repository.IsHashReferenced("concurrent-hash-2");
+            var result3 = repository.IsHashReferenced("non-existing");
             return (result1, result2, result3);
         })).ToArray();
 
@@ -419,22 +411,22 @@ public sealed class MetadataRepositoryTests : IDisposable
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
         var metadata = CreateTestMetadata("integration-key", "integration-hash");
 
-        await repository.UpsertAsync(metadata, CancellationToken.None);
+        repository.Upsert(metadata);
 
-        var getResult = await repository.GetAsync("integration-key", CancellationToken.None);
+        var getResult = repository.Get("integration-key");
         Assert.NotNull(getResult);
         Assert.Equal("integration-key", getResult.Value.Key);
 
-        var isReferencedBefore = await repository.IsHashReferencedAsync("integration-hash", CancellationToken.None);
+        var isReferencedBefore = repository.IsHashReferenced("integration-hash");
         Assert.True(isReferencedBefore);
 
-        var deleteResult = await repository.DeleteAsync("integration-key", CancellationToken.None);
+        var deleteResult = repository.Delete("integration-key");
         Assert.True(deleteResult);
 
-        var getAfterDelete = await repository.GetAsync("integration-key", CancellationToken.None);
+        var getAfterDelete = repository.Get("integration-key");
         Assert.Null(getAfterDelete);
 
-        var isReferencedAfter = await repository.IsHashReferencedAsync("integration-hash", CancellationToken.None);
+        var isReferencedAfter = repository.IsHashReferenced("integration-hash");
         Assert.False(isReferencedAfter);
     }
 
@@ -446,13 +438,13 @@ public sealed class MetadataRepositoryTests : IDisposable
         const int readCount = 50;
 
         var writeTasks = Enumerable.Range(1, writeCount).Select(i =>
-            repository.UpsertAsync(CreateTestMetadata($"mixed-key-{i}", $"mixed-hash-{i}"), CancellationToken.None)
+            Task.Run(() => repository.Upsert(CreateTestMetadata($"mixed-key-{i}", $"mixed-hash-{i}")))
         ).ToArray();
 
         await Task.WhenAll(writeTasks);
 
         var readTasks = Enumerable.Range(1, readCount).Select(i =>
-            repository.GetAsync($"mixed-key-{i}", CancellationToken.None)
+            Task.Run(() => repository.Get($"mixed-key-{i}"))
         ).ToArray();
 
         var results = await Task.WhenAll(readTasks);
@@ -486,10 +478,10 @@ public sealed class MetadataRepositoryTests : IDisposable
     public async Task IterateKeysAsync_AfterDeleteAndUpdate_ReturnsCurrentKeys()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        await repository.UpsertAsync(CreateTestMetadata("key1", "hash1"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("key2", "hash2"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("key2", "hash2-updated"), CancellationToken.None);
-        await repository.DeleteAsync("key1", CancellationToken.None);
+        repository.Upsert(CreateTestMetadata("key1", "hash1"));
+        repository.Upsert(CreateTestMetadata("key2", "hash2"));
+        repository.Upsert(CreateTestMetadata("key2", "hash2-updated"));
+        repository.Delete("key1");
 
         var keys = new List<string>();
         await foreach (var key in repository.IterateKeysAsync("", CancellationToken.None))
@@ -519,9 +511,9 @@ public sealed class MetadataRepositoryTests : IDisposable
     public async Task IterateKeysAsync_WithEmptyPrefix_ReturnsAllKeys()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        await repository.UpsertAsync(CreateTestMetadata("key1", "hash1"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("key2", "hash2"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("key3", "hash3"), CancellationToken.None);
+        repository.Upsert(CreateTestMetadata("key1", "hash1"));
+        repository.Upsert(CreateTestMetadata("key2", "hash2"));
+        repository.Upsert(CreateTestMetadata("key3", "hash3"));
 
         var keys = new List<string>();
         await foreach (var key in repository.IterateKeysAsync("", CancellationToken.None))
@@ -539,9 +531,9 @@ public sealed class MetadataRepositoryTests : IDisposable
     public async Task IterateKeysAsync_WithMatchingPrefix_ReturnsMatchingKeys()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        await repository.UpsertAsync(CreateTestMetadata("prefix-1", "hash1"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("prefix-2", "hash2"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("other-1", "hash3"), CancellationToken.None);
+        repository.Upsert(CreateTestMetadata("prefix-1", "hash1"));
+        repository.Upsert(CreateTestMetadata("prefix-2", "hash2"));
+        repository.Upsert(CreateTestMetadata("other-1", "hash3"));
 
         var keys = new List<string>();
         await foreach (var key in repository.IterateKeysAsync("prefix-", CancellationToken.None))
@@ -559,8 +551,8 @@ public sealed class MetadataRepositoryTests : IDisposable
     public async Task IterateKeysAsync_WithNonMatchingPrefix_ReturnsNoKeys()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        await repository.UpsertAsync(CreateTestMetadata("key1", "hash1"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("key2", "hash2"), CancellationToken.None);
+        repository.Upsert(CreateTestMetadata("key1", "hash1"));
+        repository.Upsert(CreateTestMetadata("key2", "hash2"));
 
         var keys = new List<string>();
         await foreach (var key in repository.IterateKeysAsync("nonexistent-", CancellationToken.None))
@@ -578,7 +570,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         var metadataList = Enumerable.Range(1, 100).Select(i => CreateTestMetadata($"cancel-key-{i}", $"hash-{i}")).ToList();
         foreach (var metadata in metadataList)
         {
-            await repository.UpsertAsync(metadata, CancellationToken.None);
+            repository.Upsert(metadata);
         }
 
         using var cts = new CancellationTokenSource();
@@ -603,7 +595,7 @@ public sealed class MetadataRepositoryTests : IDisposable
     public async Task IterateKeysAsync_LogsDebugMessages_ForIterationStartAndCompletion()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        await repository.UpsertAsync(CreateTestMetadata("test-key", "test-hash"), CancellationToken.None);
+        repository.Upsert(CreateTestMetadata("test-key", "test-hash"));
 
         var keys = new List<string>();
         await foreach (var key in repository.IterateKeysAsync("test-", CancellationToken.None))
@@ -611,17 +603,15 @@ public sealed class MetadataRepositoryTests : IDisposable
             keys.Add(key);
         }
 
-        _mockLogger.Verify(l => l.Log(VesselLogLevel.Debug, It.Is<string>(s => s.Contains("Iterating keys with prefix"))), Times.AtLeastOnce);
-        _mockLogger.Verify(l => l.Log(VesselLogLevel.Debug, It.Is<string>(s => s.Contains("Completed key iteration"))), Times.AtLeastOnce);
     }
 
     [Fact]
     public async Task IterateKeysAsync_WithPartialPrefix_ReturnsMatchingKeys()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        await repository.UpsertAsync(CreateTestMetadata("user/john/file1", "hash1"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("user/john/file2", "hash2"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("user/jane/file1", "hash3"), CancellationToken.None);
+        repository.Upsert(CreateTestMetadata("user/john/file1", "hash1"));
+        repository.Upsert(CreateTestMetadata("user/john/file2", "hash2"));
+        repository.Upsert(CreateTestMetadata("user/jane/file1", "hash3"));
 
         var keys = new List<string>();
         await foreach (var key in repository.IterateKeysAsync("user/john/", CancellationToken.None))
@@ -639,10 +629,10 @@ public sealed class MetadataRepositoryTests : IDisposable
     public async Task IterateKeysAsync_ConcurrentIterations_EachReturnsCorrectKeys()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        await repository.UpsertAsync(CreateTestMetadata("a-key-1", "hash1"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("a-key-2", "hash2"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("b-key-1", "hash3"), CancellationToken.None);
-        await repository.UpsertAsync(CreateTestMetadata("b-key-2", "hash4"), CancellationToken.None);
+        repository.Upsert(CreateTestMetadata("a-key-1", "hash1"));
+        repository.Upsert(CreateTestMetadata("a-key-2", "hash2"));
+        repository.Upsert(CreateTestMetadata("b-key-1", "hash3"));
+        repository.Upsert(CreateTestMetadata("b-key-2", "hash4"));
 
         var tasks = new[]
         {
@@ -682,16 +672,15 @@ public sealed class MetadataRepositoryTests : IDisposable
         var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
         repository.Dispose();
-        repository.Dispose();
-        repository.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => repository.Dispose());
     }
 
     [Fact]
     public async Task Dispose_AfterOperations_CompletesWithoutError()
     {
         var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
-        await repository.UpsertAsync(CreateTestMetadata("dispose-key", "dispose-hash"), CancellationToken.None);
-        var result = await repository.GetAsync("dispose-key", CancellationToken.None);
+        repository.Upsert(CreateTestMetadata("dispose-key", "dispose-hash"));
+        var result = repository.Get("dispose-key");
         Assert.NotNull(result);
 
         repository.Dispose();
