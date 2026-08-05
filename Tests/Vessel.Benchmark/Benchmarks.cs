@@ -11,20 +11,11 @@ namespace Vessel.Benchmark;
 // For more information on the VS BenchmarkDotNet Diagnosers see https://learn.microsoft.com/visualstudio/profiling/profiling-with-benchmark-dotnet
 [CPUUsageDiagnoser]
 [MemoryDiagnoser]
-//[SimpleJob(RuntimeMoniker.Net10_0, baseline: true)]
-[SimpleJob(RuntimeMoniker.NativeAot10_0)]
+[SimpleJob(RuntimeMoniker.Net10_0, baseline: true)]
+//[SimpleJob(RuntimeMoniker.NativeAot10_0)]
 public class Benchmarks
 {
     private const string Key = "benchmark-json";
-    //private static readonly Type StorageImplementationType = typeof(IVesselStorage).Assembly.GetType("Vessel.VesselStorage")
-    //    ?? throw new InvalidOperationException("Could not locate the Vessel storage implementation.");
-
-    //private static readonly ConstructorInfo StorageConstructor = StorageImplementationType.GetConstructor(
-    //    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-    //    binder: null,
-    //    [typeof(string), typeof(VesselStorageOptions)],
-    //    modifiers: null)
-    //    ?? throw new InvalidOperationException("Could not locate a suitable Vessel storage constructor.");
 
     private VesselStorage? _storage;
     private byte[] _payloadBytes = [];
@@ -53,12 +44,9 @@ public class Benchmarks
     }
 
     [GlobalCleanup]
-    public async Task CleanupAsync()
+    public void Cleanup()
     {
-        if (_storage is not null)
-        {
-            await _storage.DisposeAsync();
-        }
+        _storage?.Dispose();
 
         if (Directory.Exists(_storageRoot))
         {
@@ -85,12 +73,22 @@ public class Benchmarks
     }
 
     [Benchmark]
-    [BenchmarkCategory("Read")]
-    public async Task ReadJsonPayload()
+    [BenchmarkCategory("ReadAsync")]
+    public async Task ReadJsonPayloadAsync()
     {
         ArgumentNullException.ThrowIfNull(_storage);
 
         await using var response = await _storage.GetAsync(Key);
         await response.ContentStream.CopyToAsync(Stream.Null);
+    }
+
+    [Benchmark]
+    [BenchmarkCategory("ReadSync")]
+    public void ReadJsonPayloadSync()
+    {
+        ArgumentNullException.ThrowIfNull(_storage);
+
+        using var response = _storage.Get(Key);
+        response.ContentStream.CopyTo(Stream.Null);
     }
 }

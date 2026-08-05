@@ -34,8 +34,12 @@ internal sealed class MetadataRepository : IMetadataRepository
         _logger = logger;
         _databasePath = Path.Combine(Path.GetFullPath(storageBasePath), "metadata");
         Directory.CreateDirectory(_databasePath);
+
+        var dataDirectoryPath = Path.GetFullPath(Path.Combine(_databasePath, ".storage"));
+        Directory.CreateDirectory(dataDirectoryPath);
+
         _database = new ZoneTreeFactory<string, ObjectMetadata>()
-            .SetDataDirectory(".storage")
+            .SetDataDirectory(dataDirectoryPath)
             .ConfigureDiskSegmentOptions(options =>
             {
                 options.CompressionMethod = useCompression ? CompressionMethod.LZ4 : CompressionMethod.None;
@@ -43,7 +47,11 @@ internal sealed class MetadataRepository : IMetadataRepository
                 options.CompressionBlockSize = 4 * 1024 * 1024;
             })
             .SetValueSerializer(new ObjectMetadataSerializer())
+            // FIX 1: Tipi espliciti per la sintassi delle lambda con modificatori 'in' e 'ref'
+            .SetIsDeletedDelegate(static (in _, in value) => IsDeletedMarker(value))
+            .SetMarkValueDeletedDelegate(static (ref value) => value = default)
             .OpenOrCreate();
+
         _maintainer = _database.CreateMaintainer();
     }
 
@@ -63,11 +71,37 @@ internal sealed class MetadataRepository : IMetadataRepository
     }
 
     /// <inheritdoc/>
+    public ObjectMetadata? Get(string key)
+    {
+        //ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
+        var result = _database.TryGet(key, out var metadata);
+        if (!result || IsDeletedMarker(metadata))
+        {
+            _logger?.Log(VesselLogLevel.Debug, $"Metadata lookup miss for key '{key}'.");
+            return null;
+        }
+
+        _logger?.Log(VesselLogLevel.Debug, $"Metadata lookup hit for key '{key}'.");
+        return metadata;
+    }
+
+    /// <inheritdoc/>
     public Task UpsertAsync(in ObjectMetadata metadata, CancellationToken cancellationToken)
     {
         _database.Upsert(metadata.Key, metadata);
         _logger?.Log(VesselLogLevel.Debug, $"Stored metadata for key '{metadata.Key}' with hash '{metadata.Hash}'.");
         return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
+    public void Upsert(in ObjectMetadata metadata)
+    {
+        //ObjectDisposedException.ThrowIf(_disposed, this);
+
+        _database.Upsert(metadata.Key, metadata);
+        _logger?.Log(VesselLogLevel.Debug, $"Stored metadata for key '{metadata.Key}' with hash '{metadata.Hash}'.");
     }
 
     /// <inheritdoc/>
@@ -80,6 +114,23 @@ internal sealed class MetadataRepository : IMetadataRepository
             _logger?.Log(VesselLogLevel.Debug, $"Delete ignored because metadata for key '{key}' does not exist.");
             return false;
         }
+        _logger?.Log(VesselLogLevel.Information, $"Deleted metadata for key '{key}'.");
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public bool Delete(string key)
+    {
+        //ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
+        var result = _database.TryDelete(key, out _);
+        if (!result)
+        {
+            _logger?.Log(VesselLogLevel.Debug, $"Delete ignored because metadata for key '{key}' does not exist.");
+            return false;
+        }
+
         _logger?.Log(VesselLogLevel.Information, $"Deleted metadata for key '{key}'.");
         return true;
     }
@@ -105,6 +156,34 @@ internal sealed class MetadataRepository : IMetadataRepository
 
         _logger?.Log(VesselLogLevel.Debug, $"No metadata references found for blob hash '{hash}'.");
         return Task.FromResult(false);
+    }
+
+    /// <inheritdoc/>
+    public bool IsHashReferenced(string hash)
+    {
+        //ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentException.ThrowIfNullOrWhiteSpace(hash);
+
+        using var iterator = _database.CreateIterator();
+        iterator.SeekFirst();
+
+        while (iterator.Next())
+        {
+            var metadata = iterator.CurrentValue;
+            if (IsDeletedMarker(metadata))
+            {
+                continue;
+            }
+
+            if (string.Equals(metadata.Hash, hash, StringComparison.Ordinal))
+            {
+                _logger?.Log(VesselLogLevel.Debug, $"Found metadata reference for blob hash '{hash}'.");
+                return true;
+            }
+        }
+
+        _logger?.Log(VesselLogLevel.Debug, $"No metadata references found for blob hash '{hash}'.");
+        return false;
     }
 
     /// <inheritdoc/>
@@ -135,6 +214,50 @@ internal sealed class MetadataRepository : IMetadataRepository
         _logger?.Log(VesselLogLevel.Debug, $"Completed key iteration for prefix '{prefix}' with {enumeratedKeys} keys.");
         await Task.CompletedTask;
     }
+
+    /// <inheritdoc/>
+    public IEnumerable<string> IterateKeys(string prefix)
+    {
+        //ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(prefix);
+
+        using var iterator = _database.CreateIterator();
+        var enumeratedKeys = 0L;
+
+        _logger?.Log(VesselLogLevel.Debug, $"Iterating keys with prefix '{prefix}'.");
+
+        if (string.IsNullOrEmpty(prefix))
+        {
+            iterator.SeekFirst();
+        }
+        else
+        {
+            iterator.Seek(prefix);
+        }
+
+        while (iterator.Next())
+        {
+            string key = iterator.CurrentKey;
+            if (!key.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            var metadata = iterator.CurrentValue;
+            if (IsDeletedMarker(metadata))
+            {
+                continue;
+            }
+
+            enumeratedKeys++;
+            yield return key;
+        }
+
+        _logger?.Log(VesselLogLevel.Debug, $"Completed key iteration for prefix '{prefix}' with {enumeratedKeys} keys.");
+    }
+
+    private static bool IsDeletedMarker(in ObjectMetadata metadata)
+        => string.IsNullOrEmpty(metadata.Key) && string.IsNullOrEmpty(metadata.Hash);
 
     public void Dispose()
     {

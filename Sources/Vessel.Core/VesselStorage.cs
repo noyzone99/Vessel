@@ -101,6 +101,25 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
     }
 
     /// <inheritdoc/>
+    public ObjectResponse Get(string key)
+    {
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(key);
+            var metadata = _metadataRepository.Get(key);
+            if (metadata is null)
+            {
+                _logger?.Log(VesselLogLevel.Warning, $"Attempted to read missing object '{key}'.");
+                throw new FileNotFoundException($"Object '{key}' was not found.", key);
+            }
+
+            var objectMetadata = metadata.Value;
+            _logger?.Log(VesselLogLevel.Debug, $"Opening blob '{objectMetadata.Hash}' for object '{key}'.");
+            var contentStream = _blobStorageEngine.OpenBlobRead(objectMetadata.Hash, objectMetadata.CompressionType);
+            return new ObjectResponse(objectMetadata, contentStream);
+        }
+    }
+
+    /// <inheritdoc/>
     public async Task<bool> DeleteAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
@@ -156,6 +175,14 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
     }
 
     /// <inheritdoc/>
+    public ObjectMetadata? GetMetadata(string key)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        _logger?.Log(VesselLogLevel.Debug, $"Fetching metadata for object '{key}'.");
+        return _metadataRepository.Get(key);
+    }
+
+    /// <inheritdoc/>
     public IAsyncEnumerable<string> GetAllKeysAsync(string prefix = "", CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(prefix);
@@ -170,6 +197,13 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
                 yield return key;
             }
         }
+    }
+
+    /// <inheritdoc/>
+    public IEnumerable<string> GetAllKeys(string prefix = "")
+    {
+        ArgumentNullException.ThrowIfNull(prefix);
+        return _metadataRepository.IterateKeys(prefix);
     }
 
     private SemaphoreSlim GetKeyLock(string key)
@@ -201,10 +235,5 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
     }
 
     /// <inheritdoc/>
-    public ValueTask DisposeAsync()
-    {
-        _logger?.Log(VesselLogLevel.Information, "Disposing embedded object storage.");
-        _metadataRepository.Dispose();
-        return ValueTask.CompletedTask;
-    }
+    public void Dispose() => _metadataRepository.Dispose();
 }
