@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/Examples/" />
   <Folder Name="/Solution Items/">
+    <File Path="benchmark.md" />
     <File Path="TODO.txt" />
   </Folder>
   <Folder Name="/Sources/">

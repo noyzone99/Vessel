@@ -129,11 +129,19 @@ internal sealed class MetadataRepository : IMetadataRepository
         _logger?.Log(VesselLogLevel.Debug, $"Completed key iteration for prefix '{prefix}' with {enumeratedKeys} keys.");
     }
 
+    /// <summary>
+    /// Increases the reference count for the supplied blob hash.
+    /// </summary>
+    /// <param name="hash">The blob hash for which the reference count should be incremented.</param>
     private void IncrementRefCount(string hash)
     {
         _refCountDb.Upsert(hash, _refCountDb.TryGet(hash, out var count) ? count + 1 : 1);
     }
 
+    /// <summary>
+    /// Decreases the reference count for the supplied blob hash and removes the entry when no references remain.
+    /// </summary>
+    /// <param name="hash">The blob hash for which the reference count should be decremented.</param>
     private void DecrementRefCount(string hash)
     {
         if (_refCountDb.TryGet(hash, out var count))
@@ -143,6 +151,9 @@ internal sealed class MetadataRepository : IMetadataRepository
         }
     }
 
+    /// <summary>
+    /// Releases the resources held by the metadata repository and its backing databases.
+    /// </summary>
     public void Dispose()
     {
         _metadataDbMaintainer.Dispose();

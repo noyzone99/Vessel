@@ -33,7 +33,7 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
     [Fact]
     public void Constructor_ValidPath_CreatesDirectories()
     {
-        var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
+        _ = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
 
         Assert.True(Directory.Exists(_testRootPath));
         Assert.True(Directory.Exists(Path.Combine(_testRootPath, "blobs")));
@@ -43,7 +43,7 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
     [Fact]
     public void Constructor_ValidPathWithoutLogger_CreatesDirectories()
     {
-        var engine = new LocalBlobStorageEngine(_testRootPath);
+        _ = new LocalBlobStorageEngine(_testRootPath);
 
         Assert.True(Directory.Exists(_testRootPath));
         Assert.True(Directory.Exists(Path.Combine(_testRootPath, "blobs")));
@@ -74,7 +74,7 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
         const string relativePath = "test_relative";
         var expectedFullPath = Path.GetFullPath(relativePath);
 
-        var engine = new LocalBlobStorageEngine(relativePath, _mockLogger.Object);
+        _ = new LocalBlobStorageEngine(relativePath, _mockLogger.Object);
 
         Assert.True(Directory.Exists(expectedFullPath));
 

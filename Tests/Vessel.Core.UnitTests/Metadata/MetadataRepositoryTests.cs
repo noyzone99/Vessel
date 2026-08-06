@@ -602,7 +602,6 @@ public sealed class MetadataRepositoryTests : IDisposable
         {
             keys.Add(key);
         }
-
     }
 
     [Fact]

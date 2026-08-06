@@ -195,12 +195,19 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions o
         }
     }
 
+    /// <summary>
+    /// Selects the per-key synchronization primitive for the supplied logical key.
+    /// </summary>
+    /// <param name="key">The logical key for which a lock should be resolved.</param>
+    /// <returns>The semaphore used to serialize concurrent access for the specified key.</returns>
     private SemaphoreSlim GetKeyLock(string key)
     {
         uint hash = (uint)string.GetHashCode(key, StringComparison.Ordinal);
         return _keyLocks[hash % _keyLocks.Length];
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Releases the resources owned by the storage instance.
+    /// </summary>
     public void Dispose() => _metadataRepository.Dispose();
 }

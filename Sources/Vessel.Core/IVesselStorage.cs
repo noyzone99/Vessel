@@ -16,9 +16,7 @@ public interface IVesselStorage : IDisposable
     /// <param name="key">The logical key under which the object should be stored. Keys are used as the stable identifier for metadata lookups.</param>
     /// <param name="contentStream">The readable stream that contains the payload to persist. The stream is consumed during the write operation.</param>
     /// <param name="overwrite">When <see langword="true"/>, an existing object with the same key is replaced; otherwise, the operation fails when the key already exists.</param>
-    /// <param name="fileName">An optional original file name to persist as metadata.</param>
-    /// <param name="extension">An optional file extension to persist as metadata.</param>
-    /// <param name="mimeType">An optional MIME type to persist as metadata.</param>
+    /// <param name="fileInfo">Optional file metadata such as the original file name, extension, and MIME type to persist with the object.</param>
     /// <param name="compressionType">The compression algorithm to apply to the underlying blob payload.</param>
     /// <param name="compressionLevel">The compression strength to use for the selected compression codec.</param>
     /// <param name="cancellationToken">A token that can cancel the operation.</param>

@@ -6,8 +6,16 @@ using ZoneTree.Serializers;
 
 namespace Vessel.Metadata;
 
+/// <summary>
+/// Serializes and deserializes <see cref="ObjectMetadata"/> values for the ZoneTree metadata databases.
+/// </summary>
 internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
 {
+    /// <summary>
+    /// Converts an object metadata value into an immutable binary payload suitable for storage.
+    /// </summary>
+    /// <param name="entry">The metadata entry to serialize.</param>
+    /// <returns>A binary representation of the supplied metadata.</returns>
     public Memory<byte> Serialize(in ObjectMetadata entry)
     {
         int requiredSize = GetRequiredByteCount(entry);
@@ -39,6 +47,11 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
         return buffer.AsMemory(0, bytesWritten);
     }
 
+    /// <summary>
+    /// Restores an object metadata value from its binary representation.
+    /// </summary>
+    /// <param name="bytes">The serialized metadata bytes to decode.</param>
+    /// <returns>The deserialized metadata entry.</returns>
     public ObjectMetadata Deserialize(Memory<byte> bytes)
     {
         ReadOnlySpan<byte> source = bytes.Span;
@@ -80,6 +93,12 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
 
     #region Helpers di Scrittura e Lettura
 
+    /// <summary>
+    /// Writes a nullable string to the binary buffer using a length-prefixed UTF-8 encoding.
+    /// </summary>
+    /// <param name="value">The string value to write, or <see langword="null"/> for a null marker.</param>
+    /// <param name="destination">The destination buffer that receives the serialized bytes.</param>
+    /// <param name="bytesWritten">The current byte offset in the destination buffer.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteString(string? value, Span<byte> destination, ref int bytesWritten)
     {
@@ -98,6 +117,12 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
         bytesWritten += byteCount;
     }
 
+    /// <summary>
+    /// Reads a nullable string from the binary buffer using the length-prefixed UTF-8 encoding.
+    /// </summary>
+    /// <param name="source">The source buffer that contains the serialized data.</param>
+    /// <param name="bytesRead">The current byte offset in the source buffer.</param>
+    /// <returns>The value encoded in the buffer, or <see langword="null"/> when the entry is absent.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static string? ReadString(ReadOnlySpan<byte> source, ref int bytesRead)
     {
@@ -119,6 +144,11 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
         return value;
     }
 
+    /// <summary>
+    /// Determines the number of bytes required to serialize the supplied metadata value.
+    /// </summary>
+    /// <param name="metadata">The metadata value whose serialized size should be calculated.</param>
+    /// <returns>The total number of bytes required by the serialization format.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetRequiredByteCount(in ObjectMetadata metadata)
     {
@@ -132,6 +162,11 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
         return size;
     }
 
+    /// <summary>
+    /// Computes the serialized byte size of a nullable string value.
+    /// </summary>
+    /// <param name="str">The string value to measure.</param>
+    /// <returns>The number of bytes required to encode the supplied string.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetStringByteCount(string? str)
         => str is null ? 4 : 4 + Encoding.UTF8.GetByteCount(str);

@@ -6,6 +6,9 @@ using ZstdSharp;
 
 namespace Vessel.Storage;
 
+/// <summary>
+/// Persists and retrieves object payload blobs from a local filesystem directory.
+/// </summary>
 internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
 {
     private const int BufferSize = 64 * 1024;
@@ -13,6 +16,12 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
     private readonly string _tmpPath;
     private readonly IVesselLogger? _logger;
 
+    /// <summary>
+    /// Initializes the local blob storage engine under the supplied storage root.
+    /// </summary>
+    /// <param name="storageBasePath">The root directory used to host the blob and temporary-file folders.</param>
+    /// <param name="logger">An optional logger used to record blob storage diagnostics.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="storageBasePath"/> is null, empty, or whitespace.</exception>
     public LocalBlobStorageEngine(string storageBasePath, IVesselLogger? logger = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(storageBasePath);
@@ -27,6 +36,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
         _logger?.Log(VesselLogLevel.Information, $"Initialized blob storage at '{rootPath}'.");
     }
 
+    /// <inheritdoc/>
     public async Task<(string Hash, long Size, long CompressedSize)> WriteBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(inputStream);
@@ -107,6 +117,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
         }
     }
 
+    /// <inheritdoc/>
     public Stream OpenBlobRead(string hash, CompressionType compressionType)
     {
         var path = GetBlobPath(hash);
@@ -122,12 +133,14 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
         };
     }
 
+    /// <inheritdoc/>
     public void DeleteBlob(string hash)
     {
         var path = GetBlobPath(hash);
         if (File.Exists(path)) File.Delete(path);
     }
 
+    /// <inheritdoc/>
     public void CleanupOrphanedTempFiles()
     {
         if (!Directory.Exists(_tmpPath)) return;
@@ -138,16 +151,32 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
         }
     }
 
+    /// <summary>
+    /// Best-effort deletes a file if it exists and can be removed without raising an exception.
+    /// </summary>
+    /// <param name="path">The full path of the file to delete.</param>
     private static void TryDeleteFile(string path)
     {
         try { File.Delete(path); } catch { }
     }
 
+    /// <summary>
+    /// Resolves the on-disk path for a blob identified by a content hash.
+    /// </summary>
+    /// <param name="hash">The content hash used as the blob identifier.</param>
+    /// <returns>The fully qualified path to the stored blob.</returns>
     private string GetBlobPath(string hash)
     {
         return Path.Join(_blobsPath, hash.AsSpan(0, 2), hash.AsSpan(2, 2), $"{hash}.blob");
     }
 
+    /// <summary>
+    /// Wraps a base stream with the appropriate compression stream for the requested codec and level.
+    /// </summary>
+    /// <param name="baseStream">The destination stream that receives the compressed bytes.</param>
+    /// <param name="type">The compression codec requested by the caller.</param>
+    /// <param name="level">The compression strength selected for the operation.</param>
+    /// <returns>A stream that writes compressed data to the supplied base stream.</returns>
     private static Stream WrapStream(Stream baseStream, CompressionType type, CompressionLevel level)
     {
         return type switch
@@ -159,6 +188,11 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
         };
     }
 
+    /// <summary>
+    /// Maps the generic compression level to the Zstandard compression settings used by the implementation.
+    /// </summary>
+    /// <param name="level">The requested compression level.</param>
+    /// <returns>The corresponding Zstandard compression level.</returns>
     private static int GetZstdLevel(CompressionLevel level) => level switch
     {
         CompressionLevel.Fastest => 1,
@@ -167,6 +201,11 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
         _ => 3
     };
 
+    /// <summary>
+    /// Maps the generic compression level to the LZ4 compression settings used by the implementation.
+    /// </summary>
+    /// <param name="level">The requested compression level.</param>
+    /// <returns>The corresponding LZ4 compression level.</returns>
     private static K4os.Compression.LZ4.LZ4Level GetLZ4Level(CompressionLevel level) => level switch
     {
         CompressionLevel.Fastest => K4os.Compression.LZ4.LZ4Level.L00_FAST,
@@ -175,6 +214,11 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
         _ => K4os.Compression.LZ4.LZ4Level.L00_FAST
     };
 
+    /// <summary>
+    /// Formats the supplied bytes as a lowercase hexadecimal string suitable for blob identifiers.
+    /// </summary>
+    /// <param name="bytes">The binary payload to encode.</param>
+    /// <returns>A lowercase hexadecimal representation of the supplied bytes.</returns>
     private static unsafe string ToLowerHexString(ReadOnlySpan<byte> bytes)
     {
         fixed (byte* pBytes = bytes)
