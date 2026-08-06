@@ -8,7 +8,7 @@ namespace Vessel.Benchmark;
 [CPUUsageDiagnoser]
 [MemoryDiagnoser]
 [SimpleJob(RuntimeMoniker.Net10_0, baseline: true)]
-[SimpleJob(RuntimeMoniker.NativeAot10_0)]
+//[SimpleJob(RuntimeMoniker.NativeAot10_0)]
 public class Benchmarks
 {
     private VesselStorage? _storage;
@@ -19,8 +19,8 @@ public class Benchmarks
     //[Params(CompressionType.None, CompressionType.Zstd, CompressionType.LZ4)]
     public CompressionType CompressionType { get; set; } = CompressionType.None;
 
-    //[Params(1024, 1024 * 512)]
-    public int PayloadSize { get; set; } = 1024 * 512;
+    [Params(1024, 1024 * 512)]
+    public int PayloadSize { get; set; }
 
     [GlobalSetup]
     public async Task SetupAsync()
