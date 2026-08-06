@@ -52,10 +52,9 @@ internal interface IMetadataRepository : IDisposable
     /// Streams logical keys matching the supplied prefix in ascending order.
     /// </summary>
     /// <param name="prefix">An optional prefix used to filter the enumeration.</param>
-    /// <param name="cancellationToken">A token that can cancel the enumeration.</param>
-    /// <returns>An asynchronous enumeration of matching keys.</returns>
+    /// <returns>A synchronous enumeration of matching keys.</returns>
     /// <exception cref="ArgumentNullException">
     /// Thrown when <paramref name="prefix"/> is <see langword="null"/>.
     /// </exception>
-    IAsyncEnumerable<string> IterateKeysAsync(string prefix, CancellationToken cancellationToken);
+    IEnumerable<string> IterateKeys(string prefix);
 }

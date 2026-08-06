@@ -1,5 +1,4 @@
-﻿using Moq;
-using System.Text;
+using Moq;
 using Vessel.Logging;
 using Vessel.Metadata;
 using Vessel.Models;
@@ -7,8 +6,8 @@ using Vessel.Models;
 namespace Vessel.Core.UnitTests.Metadata;
 
 /// <summary>
-/// Tests for MetadataRepository persistence when switching compression modes between runs.
-/// Verifies that RocksDB can correctly read data regardless of compression setting changes.
+/// Tests for MetadataRepository persistence when switching compression modes between runs. Verifies that RocksDB can
+/// correctly read data regardless of compression setting changes.
 /// </summary>
 public sealed class MetadataRepositoryPersistenceTests : IDisposable
 {
@@ -147,10 +146,7 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
             var keys = new List<string>();
-            await foreach (var key in repository.IterateKeysAsync("", CancellationToken.None))
-            {
-                keys.Add(key);
-            }
+            keys.AddRange(repository.IterateKeys(""));
 
             Assert.Equal(4, keys.Count);
             Assert.Contains("key1", keys);
@@ -177,10 +173,7 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
             var keys = new List<string>();
-            await foreach (var key in repository.IterateKeysAsync("", CancellationToken.None))
-            {
-                keys.Add(key);
-            }
+            keys.AddRange(repository.IterateKeys(""));
 
             Assert.Equal(3, keys.Count);
             Assert.Contains("key1", keys);
@@ -268,10 +261,7 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
             var keys = new List<string>();
-            await foreach (var key in repository.IterateKeysAsync("", CancellationToken.None))
-            {
-                keys.Add(key);
-            }
+            keys.AddRange(repository.IterateKeys(""));
 
             Assert.Equal(entryCount, keys.Count);
 
@@ -301,10 +291,7 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
             var userKeys = new List<string>();
-            await foreach (var key in repository.IterateKeysAsync("users/", CancellationToken.None))
-            {
-                userKeys.Add(key);
-            }
+            userKeys.AddRange(repository.IterateKeys("users/"));
 
             Assert.Equal(2, userKeys.Count);
             Assert.Contains("users/john", userKeys);

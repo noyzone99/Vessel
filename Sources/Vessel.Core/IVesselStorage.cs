@@ -30,22 +30,12 @@ public interface IVesselStorage : IDisposable
     /// Retrieves the object payload and metadata for the specified logical key.
     /// </summary>
     /// <param name="key">The logical key of the object to read.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
-    /// <returns>An <see cref="ObjectResponse"/> that exposes the content stream and metadata.</returns>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> is null, empty, or whitespace.</exception>
-    /// <exception cref="FileNotFoundException">Thrown when no object exists for the requested key.</exception>
-    ValueTask<ObjectResponse> GetAsync(string key, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Retrieves the object payload and metadata for the specified logical key.
-    /// </summary>
-    /// <param name="key">The logical key of the object to read.</param>
     /// <returns>An <see cref="ObjectResponse"/> that exposes the content stream and metadata.</returns>
     /// <exception cref="ArgumentException">
     /// Thrown when <paramref name="key"/> is null, empty, or whitespace.
     /// </exception>
     /// <exception cref="FileNotFoundException">Thrown when no object exists for the requested key.</exception>
-    ObjectResponse Get(string key);
+    ObjectResponse GetStream(string key);
 
     /// <summary>
     /// Deletes the object associated with the specified logical key.
@@ -60,15 +50,6 @@ public interface IVesselStorage : IDisposable
     /// Returns metadata for the specified object without opening the underlying blob content.
     /// </summary>
     /// <param name="key">The logical key of the object whose metadata should be retrieved.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
-    /// <returns>Metadata for the object, or <see langword="null"/> when the key is unknown.</returns>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> is null, empty, or whitespace.</exception>
-    ValueTask<ObjectMetadata?> GetMetadataAsync(string key, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Returns metadata for the specified object without opening the underlying blob content.
-    /// </summary>
-    /// <param name="key">The logical key of the object whose metadata should be retrieved.</param>
     /// <returns>Metadata for the object, or <see langword="null"/> when the key is unknown.</returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> is null, empty, or whitespace.</exception>
     ObjectMetadata? GetMetadata(string key);
@@ -77,8 +58,7 @@ public interface IVesselStorage : IDisposable
     /// Enumerates logical object keys whose names match the supplied prefix.
     /// </summary>
     /// <param name="prefix">An optional prefix used to filter the set of keys.</param>
-    /// <param name="cancellationToken">A token used to cancel the enumeration.</param>
-    /// <returns>An asynchronous enumeration of matching keys.</returns>
+    /// <returns>A synchronous enumeration of matching keys.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="prefix"/> is <see langword="null"/>.</exception>
-    IAsyncEnumerable<string> GetAllKeysAsync(string prefix = "", CancellationToken cancellationToken = default);
+    IEnumerable<string> GetAllKeys(string prefix = "");
 }

@@ -1,5 +1,4 @@
-﻿using Moq;
-using System.Text;
+using Moq;
 using Vessel.Logging;
 using Vessel.Metadata;
 using Vessel.Models;
@@ -7,8 +6,8 @@ using Vessel.Models;
 namespace Vessel.Core.UnitTests.Metadata;
 
 /// <summary>
-/// Tests for MetadataRepository with metadata compression enabled.
-/// Verifies that the repository works correctly when using RocksDB's LZ4 compression.
+/// Tests for MetadataRepository with metadata compression enabled. Verifies that the repository works correctly when
+/// using RocksDB's LZ4 compression.
 /// </summary>
 public sealed class MetadataRepositoryCompressionTests : IDisposable
 {
@@ -106,10 +105,7 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
         repository.Upsert(CreateTestMetadata("other-1", "hash3"));
 
         var keys = new List<string>();
-        await foreach (var key in repository.IterateKeysAsync("prefix-", CancellationToken.None))
-        {
-            keys.Add(key);
-        }
+        keys.AddRange(repository.IterateKeys("prefix-"));
 
         Assert.Equal(2, keys.Count);
         Assert.Contains("prefix-1", keys);
@@ -130,10 +126,7 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
         }
 
         var keys = new List<string>();
-        await foreach (var key in repository.IterateKeysAsync("", CancellationToken.None))
-        {
-            keys.Add(key);
-        }
+        keys.AddRange(repository.IterateKeys(""));
 
         Assert.Equal(50, keys.Count);
         Assert.Contains("count-key-1", keys);

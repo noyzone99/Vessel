@@ -1,4 +1,4 @@
-﻿using Moq;
+using Moq;
 using System.Text;
 using Vessel.Logging;
 using Vessel.Models;
@@ -47,8 +47,8 @@ public sealed class VesselStoragePersistenceTests : IDisposable
 
         using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
-            var response1 = await storage.GetAsync("key1", TestContext.Current.CancellationToken);
-            var response2 = await storage.GetAsync("key2", TestContext.Current.CancellationToken);
+            var response1 = storage.GetStream("key1");
+            var response2 = storage.GetStream("key2");
 
             Assert.Equal("key1", response1.Metadata.Key);
             Assert.Equal("key2", response2.Metadata.Key);
@@ -73,8 +73,8 @@ public sealed class VesselStoragePersistenceTests : IDisposable
 
         using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
-            var response1 = await storage.GetAsync("keyA", TestContext.Current.CancellationToken);
-            var response2 = await storage.GetAsync("keyB", TestContext.Current.CancellationToken);
+            var response1 = storage.GetStream("keyA");
+            var response2 = storage.GetStream("keyB");
 
             Assert.Equal("keyA", response1.Metadata.Key);
             Assert.Equal("keyB", response2.Metadata.Key);
@@ -107,10 +107,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             await storage.PutAsync("final-key", stream, cancellationToken: TestContext.Current.CancellationToken);
 
             var keys = new List<string>();
-            await foreach (var key in storage.GetAllKeysAsync(cancellationToken: TestContext.Current.CancellationToken))
-            {
-                keys.Add(key);
-            }
+            keys.AddRange(storage.GetAllKeys());
 
             Assert.Equal(3, keys.Count);
             Assert.Contains("uncompressed-key", keys);
@@ -133,8 +130,8 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             var deleted = await storage.DeleteAsync("delete-key", TestContext.Current.CancellationToken);
             Assert.True(deleted);
 
-            await Assert.ThrowsAsync<FileNotFoundException>(async () =>
-                await storage.GetAsync("delete-key", TestContext.Current.CancellationToken));
+            Assert.Throws<FileNotFoundException>(() =>
+                storage.GetStream("delete-key"));
         }
     }
 
@@ -152,7 +149,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Updated content"));
             var updated = await storage.PutAsync("update-key", stream, overwrite: true, cancellationToken: TestContext.Current.CancellationToken);
 
-            var response = await storage.GetAsync("update-key", TestContext.Current.CancellationToken);
+            var response = storage.GetStream("update-key");
             using var reader = new StreamReader(response.ContentStream);
             var content = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
 
@@ -171,7 +168,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
 
         using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
-            var metadata = await storage.GetMetadataAsync("metadata-key", TestContext.Current.CancellationToken);
+            var metadata = storage.GetMetadata("metadata-key");
 
             Assert.NotNull(metadata);
             Assert.Equal("metadata-key", metadata.Value.Key);
@@ -207,16 +204,13 @@ public sealed class VesselStoragePersistenceTests : IDisposable
         using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             var keys = new List<string>();
-            await foreach (var key in storage.GetAllKeysAsync(cancellationToken: TestContext.Current.CancellationToken))
-            {
-                keys.Add(key);
-            }
+            keys.AddRange(storage.GetAllKeys());
 
             Assert.Equal(objectCount, keys.Count);
 
             for (int i = 0; i < objectCount; i++)
             {
-                var response = await storage.GetAsync($"key-{i}", TestContext.Current.CancellationToken);
+                var response = storage.GetStream($"key-{i}");
                 Assert.Equal($"key-{i}", response.Metadata.Key);
 
                 using var reader = new StreamReader(response.ContentStream);
@@ -243,10 +237,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             await storage.PutAsync("admins/alice", stream, cancellationToken: TestContext.Current.CancellationToken);
 
             var userKeys = new List<string>();
-            await foreach (var key in storage.GetAllKeysAsync(prefix: "users/", cancellationToken: TestContext.Current.CancellationToken))
-            {
-                userKeys.Add(key);
-            }
+            userKeys.AddRange(storage.GetAllKeys(prefix: "users/"));
 
             Assert.Equal(2, userKeys.Count);
             Assert.Contains("users/john", userKeys);
@@ -271,7 +262,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(duplicateContent));
             var metadata2 = await storage.PutAsync("key2", stream, cancellationToken: TestContext.Current.CancellationToken);
 
-            var metadata1 = await storage.GetMetadataAsync("key1", TestContext.Current.CancellationToken);
+            var metadata1 = storage.GetMetadata("key1");
             Assert.NotNull(metadata1);
             Assert.Equal(metadata1.Value.Hash, metadata2.Hash);
 
@@ -310,8 +301,8 @@ public sealed class VesselStoragePersistenceTests : IDisposable
 
         using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
-            var uncompressedResponse = await storage.GetAsync("shared-content", TestContext.Current.CancellationToken);
-            var compressedResponse = await storage.GetAsync("shared-content-compressed", TestContext.Current.CancellationToken);
+            var uncompressedResponse = storage.GetStream("shared-content");
+            var compressedResponse = storage.GetStream("shared-content-compressed");
 
             using var uncompressedReader = new StreamReader(uncompressedResponse.ContentStream);
             using var compressedReader = new StreamReader(compressedResponse.ContentStream);
@@ -339,8 +330,8 @@ public sealed class VesselStoragePersistenceTests : IDisposable
 
         using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
         {
-            var response1 = await storage.GetAsync("key1", TestContext.Current.CancellationToken);
-            var response2 = await storage.GetAsync("key2", TestContext.Current.CancellationToken);
+            var response1 = storage.GetStream("key1");
+            var response2 = storage.GetStream("key2");
 
             using var reader1 = new StreamReader(response1.ContentStream);
             using var reader2 = new StreamReader(response2.ContentStream);

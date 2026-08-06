@@ -51,7 +51,7 @@ var uploadTasks = documents.Select(document => Task.Run(async () =>
 var uploadedMetadata = await Task.WhenAll(uploadTasks);
 
 Console.WriteLine("\nChiavi presenti nel repository:");
-await foreach (var key in storage.GetAllKeysAsync())
+foreach (var key in storage.GetAllKeys())
 {
     Console.WriteLine($"- {key}");
 }
@@ -59,7 +59,7 @@ await foreach (var key in storage.GetAllKeysAsync())
 Console.WriteLine("\nLettura dei file e dei metadati:");
 foreach (var metadata in uploadedMetadata)
 {
-    await using var response = await storage.GetAsync(metadata.Key);
+    await using var response = storage.GetStream(metadata.Key);
     using var reader = new StreamReader(response.ContentStream, Encoding.UTF8, leaveOpen: false);
     var content = await reader.ReadToEndAsync();
 
@@ -70,13 +70,13 @@ foreach (var metadata in uploadedMetadata)
 }
 
 Console.WriteLine("\nRecupero metadati di una chiave esistente:");
-var invoiceMetadata = await storage.GetMetadataAsync("invoices/2026-01");
+var invoiceMetadata = storage.GetMetadata("invoices/2026-01");
 Console.WriteLine($"Metadata found: {invoiceMetadata?.FileName} / {invoiceMetadata?.CompressionType}");
 
 Console.WriteLine("\nTentativo di lettura di una chiave inesistente:");
 try
 {
-    await using var missingResponse = await storage.GetAsync("missing/key");
+    await using var missingResponse = storage.GetStream("missing/key");
 }
 catch (FileNotFoundException ex)
 {

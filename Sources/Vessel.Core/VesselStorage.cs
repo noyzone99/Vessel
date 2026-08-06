@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using Vessel.Logging;
 using Vessel.Metadata;
 using Vessel.Models;
@@ -80,26 +79,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
     }
 
     /// <inheritdoc/>
-    public async ValueTask<ObjectResponse> GetAsync(string key, CancellationToken cancellationToken = default)
-    {
-        ThrowIfDisposed();
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-
-        var metadata = _metadataRepository.Get(key);
-        if (metadata is null)
-        {
-            _logger?.Log(VesselLogLevel.Warning, $"Attempted to read missing object '{key}'.");
-            throw new FileNotFoundException($"Object '{key}' was not found.", key);
-        }
-
-        var objectMetadata = metadata.Value;
-        _logger?.Log(VesselLogLevel.Debug, $"Opening blob '{objectMetadata.Hash}' for object '{key}'.");
-        var contentStream = _blobStorageEngine.OpenBlobRead(objectMetadata.Hash, objectMetadata.CompressionType);
-        return new ObjectResponse(objectMetadata, contentStream);
-    }
-
-    /// <inheritdoc/>
-    public ObjectResponse Get(string key)
+    public ObjectResponse GetStream(string key)
     {
         {
             ThrowIfDisposed();
@@ -167,15 +147,6 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
     }
 
     /// <inheritdoc/>
-    public async ValueTask<ObjectMetadata?> GetMetadataAsync(string key, CancellationToken cancellationToken = default)
-    {
-        ThrowIfDisposed();
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        _logger?.Log(VesselLogLevel.Debug, $"Fetching metadata for object '{key}'.");
-        return _metadataRepository.Get(key);
-    }
-
-    /// <inheritdoc/>
     public ObjectMetadata? GetMetadata(string key)
     {
         ThrowIfDisposed();
@@ -185,26 +156,13 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
     }
 
     /// <inheritdoc/>
-    public IAsyncEnumerable<string> GetAllKeysAsync(string prefix = "", CancellationToken cancellationToken = default)
+    public IEnumerable<string> GetAllKeys(string prefix = "")
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(prefix);
 
-        return GetAllKeysAsyncInternal(cancellationToken);
-
-        /// <summary>
-        /// Enumerates the metadata keys that match the configured prefix.
-        /// </summary>
-        /// <param name="localToken">A cancellation token that can stop the enumeration early.</param>
-        /// <returns>An asynchronous sequence of matching keys.</returns>
-        async IAsyncEnumerable<string> GetAllKeysAsyncInternal([EnumeratorCancellation] CancellationToken localToken)
-        {
-            _logger?.Log(VesselLogLevel.Debug, $"Enumerating keys with prefix '{prefix}'.");
-            await foreach (var key in _metadataRepository.IterateKeysAsync(prefix, localToken).ConfigureAwait(false))
-            {
-                yield return key;
-            }
-        }
+        _logger?.Log(VesselLogLevel.Debug, $"Sync enumeration for keys with prefix '{prefix}'.");
+        return _metadataRepository.IterateKeys(prefix);
     }
 
     /// <summary>

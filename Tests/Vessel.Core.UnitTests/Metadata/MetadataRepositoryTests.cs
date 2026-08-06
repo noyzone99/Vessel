@@ -1,4 +1,4 @@
-﻿using Moq;
+using Moq;
 using Vessel.Logging;
 using Vessel.Metadata;
 using Vessel.Models;
@@ -484,10 +484,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         repository.Delete("key1");
 
         var keys = new List<string>();
-        await foreach (var key in repository.IterateKeysAsync("", CancellationToken.None))
-        {
-            keys.Add(key);
-        }
+        keys.AddRange(repository.IterateKeys(""));
 
         Assert.Single(keys);
         Assert.Equal("key2", keys[0]);
@@ -499,10 +496,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
         var keys = new List<string>();
-        await foreach (var key in repository.IterateKeysAsync("", CancellationToken.None))
-        {
-            keys.Add(key);
-        }
+        keys.AddRange(repository.IterateKeys(""));
 
         Assert.Empty(keys);
     }
@@ -516,10 +510,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         repository.Upsert(CreateTestMetadata("key3", "hash3"));
 
         var keys = new List<string>();
-        await foreach (var key in repository.IterateKeysAsync("", CancellationToken.None))
-        {
-            keys.Add(key);
-        }
+        keys.AddRange(repository.IterateKeys(""));
 
         Assert.Equal(3, keys.Count);
         Assert.Contains("key1", keys);
@@ -536,10 +527,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         repository.Upsert(CreateTestMetadata("other-1", "hash3"));
 
         var keys = new List<string>();
-        await foreach (var key in repository.IterateKeysAsync("prefix-", CancellationToken.None))
-        {
-            keys.Add(key);
-        }
+        keys.AddRange(repository.IterateKeys("prefix-"));
 
         Assert.Equal(2, keys.Count);
         Assert.Contains("prefix-1", keys);
@@ -555,16 +543,13 @@ public sealed class MetadataRepositoryTests : IDisposable
         repository.Upsert(CreateTestMetadata("key2", "hash2"));
 
         var keys = new List<string>();
-        await foreach (var key in repository.IterateKeysAsync("nonexistent-", CancellationToken.None))
-        {
-            keys.Add(key);
-        }
+        keys.AddRange(repository.IterateKeys("nonexistent-"));
 
         Assert.Empty(keys);
     }
 
     [Fact]
-    public async Task IterateKeysAsync_WithCancellationToken_ThrowsOnCancellation()
+    public async Task IterateKeys_WithPrefix_ReturnsMatchingKeys()
     {
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
         var metadataList = Enumerable.Range(1, 100).Select(i => CreateTestMetadata($"cancel-key-{i}", $"hash-{i}")).ToList();
@@ -573,22 +558,18 @@ public sealed class MetadataRepositoryTests : IDisposable
             repository.Upsert(metadata);
         }
 
-        using var cts = new CancellationTokenSource();
         var keys = new List<string>();
-
-        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+        foreach (var key in repository.IterateKeys("cancel-"))
         {
-            await foreach (var key in repository.IterateKeysAsync("cancel-", cts.Token))
+            keys.Add(key);
+            if (keys.Count >= 5)
             {
-                keys.Add(key);
-                if (keys.Count >= 5)
-                {
-                    cts.Cancel();
-                }
+                break;
             }
-        });
+        }
 
         Assert.True(keys.Count >= 5);
+        Assert.All(keys, key => Assert.Contains("cancel-key-", key));
     }
 
     [Fact]
@@ -598,10 +579,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         repository.Upsert(CreateTestMetadata("test-key", "test-hash"));
 
         var keys = new List<string>();
-        await foreach (var key in repository.IterateKeysAsync("test-", CancellationToken.None))
-        {
-            keys.Add(key);
-        }
+        keys.AddRange(repository.IterateKeys("test-"));
     }
 
     [Fact]
@@ -613,10 +591,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         repository.Upsert(CreateTestMetadata("user/jane/file1", "hash3"));
 
         var keys = new List<string>();
-        await foreach (var key in repository.IterateKeysAsync("user/john/", CancellationToken.None))
-        {
-            keys.Add(key);
-        }
+        keys.AddRange(repository.IterateKeys("user/john/"));
 
         Assert.Equal(2, keys.Count);
         Assert.Contains("user/john/file1", keys);
@@ -638,19 +613,13 @@ public sealed class MetadataRepositoryTests : IDisposable
             Task.Run(async () =>
             {
                 var keys = new List<string>();
-                await foreach (var key in repository.IterateKeysAsync("a-", CancellationToken.None))
-                {
-                    keys.Add(key);
-                }
+                keys.AddRange(repository.IterateKeys("a-"));
                 return keys;
             }),
             Task.Run(async () =>
             {
                 var keys = new List<string>();
-                await foreach (var key in repository.IterateKeysAsync("b-", CancellationToken.None))
-                {
-                    keys.Add(key);
-                }
+                keys.AddRange(repository.IterateKeys("b-"));
                 return keys;
             })
         };

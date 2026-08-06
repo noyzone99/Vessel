@@ -1,5 +1,4 @@
-﻿using System.Runtime.CompilerServices;
-using Vessel.Logging;
+﻿using Vessel.Logging;
 using Vessel.Models;
 using ZoneTree;
 using ZoneTree.Options;
@@ -108,13 +107,15 @@ internal sealed class MetadataRepository : IMetadataRepository
     }
 
     /// <inheritdoc/>
-    public async IAsyncEnumerable<string> IterateKeysAsync(string prefix, [EnumeratorCancellation] CancellationToken cancellationToken)
+    public IEnumerable<string> IterateKeys(string prefix)
     {
         ThrowIfDisposed();
+        // L'iteratore di ZoneTree è un oggetto disposable che punta ai segmenti in memoria/disco
         using var iterator = _metadataDb.CreateIterator();
         var enumeratedKeys = 0L;
 
-        _logger?.Log(VesselLogLevel.Debug, $"Iterating keys with prefix '{prefix}'.");
+        _logger?.Log(VesselLogLevel.Debug, $"Iterating keys (sync) with prefix '{prefix}'.");
+
         if (string.IsNullOrWhiteSpace(prefix))
         {
             iterator.SeekFirst();
@@ -123,16 +124,21 @@ internal sealed class MetadataRepository : IMetadataRepository
         {
             iterator.Seek(prefix);
         }
+
         while (iterator.Next())
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            // Nessun CancellationToken qui (opzionale in sync, o puoi passarlo)
             string key = iterator.CurrentKey;
+
+            // Se usciamo dal prefisso, interrompiamo subito l'iterazione (O(log n) + m)
             if (!key.StartsWith(prefix, StringComparison.Ordinal))
                 break;
+
             enumeratedKeys++;
             yield return key;
         }
-        _logger?.Log(VesselLogLevel.Debug, $"Completed key iteration for prefix '{prefix}' with {enumeratedKeys} keys.");
+
+        _logger?.Log(VesselLogLevel.Debug, $"Completed sync key iteration for prefix '{prefix}' with {enumeratedKeys} keys.");
     }
 
     /// <summary>

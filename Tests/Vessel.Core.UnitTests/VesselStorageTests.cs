@@ -1,4 +1,4 @@
-﻿using Moq;
+using Moq;
 using System.Collections.Concurrent;
 using System.Text;
 using Vessel.Logging;
@@ -32,15 +32,12 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task PutAsync_ValidKey_StoresObjectAndReturnsMetadata()
     {
-        // Arrange
         const string key = "test-key";
         const string content = "Hello, World!";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
 
-        // Act
         var result = await _storage.PutAsync(key, stream, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.Equal(key, result.Key);
         Assert.NotNull(result.Hash);
         Assert.True(result.Size > 0);
@@ -49,10 +46,8 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task PutAsync_NullKey_ThrowsArgumentNullException()
     {
-        // Arrange
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
 
-        // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
             _storage.PutAsync(null!, stream, cancellationToken: TestContext.Current.CancellationToken));
     }
@@ -60,10 +55,8 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task PutAsync_EmptyKey_ThrowsArgumentException()
     {
-        // Arrange
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
 
-        // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _storage.PutAsync("", stream, cancellationToken: TestContext.Current.CancellationToken));
     }
@@ -71,10 +64,8 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task PutAsync_WhitespaceKey_ThrowsArgumentException()
     {
-        // Arrange
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
 
-        // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _storage.PutAsync("   ", stream, cancellationToken: TestContext.Current.CancellationToken));
     }
@@ -82,7 +73,6 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task PutAsync_NullStream_ThrowsArgumentNullException()
     {
-        // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
             _storage.PutAsync("key", null!, cancellationToken: TestContext.Current.CancellationToken));
     }
@@ -90,13 +80,11 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task PutAsync_ExistingKeyWithoutOverwrite_ThrowsInvalidOperationException()
     {
-        // Arrange
         const string key = "duplicate-key";
         await using var stream1 = new MemoryStream(Encoding.UTF8.GetBytes("content1"));
         await using var stream2 = new MemoryStream(Encoding.UTF8.GetBytes("content2"));
         await _storage.PutAsync(key, stream1, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Act & Assert
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             _storage.PutAsync(key, stream2, overwrite: false, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Contains(key, exception.Message);
@@ -105,7 +93,6 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task PutAsync_ExistingKeyWithOverwrite_UpdatesMetadata()
     {
-        // Arrange
         const string key = "overwrite-key";
         const string content1 = "original content";
         const string content2 = "updated content";
@@ -114,10 +101,8 @@ public sealed class VesselStorageTests : IDisposable
 
         var original = await _storage.PutAsync(key, stream1, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Act
         var updated = await _storage.PutAsync(key, stream2, overwrite: true, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.Equal(key, updated.Key);
         Assert.NotEqual(original.Hash, updated.Hash);
         Assert.NotEqual(original.Size, updated.Size);
@@ -126,103 +111,82 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task PutAsync_WithFileName_StoresFileName()
     {
-        // Arrange
         const string key = "test-with-filename";
         const string fileName = "document.txt";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
 
-        // Act
         var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileName: fileName), cancellationToken: TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.Equal(fileName, result.FileName);
     }
 
     [Fact]
     public async Task PutAsync_WithWhitespaceFileName_PreservesValue()
     {
-        // Arrange
         const string key = "test-whitespace-filename";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
 
-        // Act
         var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileName: "   "), cancellationToken: TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.Equal("   ", result.FileName);
     }
 
     [Fact]
     public async Task PutAsync_WithExtension_PreservesExtensionValue()
     {
-        // Arrange
         const string key = "test-with-extension";
         const string extension = ".json";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{}"));
 
-        // Act
         var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileExtension: extension), cancellationToken: TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.Equal(extension, result.Extension);
     }
 
     [Fact]
     public async Task PutAsync_WithExtensionWithoutDot_PreservesValue()
     {
-        // Arrange
         const string key = "test-extension-no-dot";
         const string extension = "txt";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
 
-        // Act
         var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileExtension: extension), cancellationToken: TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.Equal(extension, result.Extension);
     }
 
     [Fact]
     public async Task PutAsync_WithMimeType_StoresMimeType()
     {
-        // Arrange
         const string key = "test-with-mimetype";
         const string mimeType = "application/json";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{}"));
 
-        // Act
         var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(MimeType: mimeType), cancellationToken: TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.Equal(mimeType, result.MimeType);
     }
 
     [Fact]
     public async Task PutAsync_WithWhitespaceMimeType_PreservesValue()
     {
-        // Arrange
         const string key = "test-whitespace-mimetype";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
 
-        // Act
         var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(MimeType: "   "), cancellationToken: TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.Equal("   ", result.MimeType);
     }
 
     [Fact]
     public async Task PutAsync_WithCompressionType_StoresCompressedData()
     {
-        // Arrange
         const string key = "test-compressed";
         var content = new string('a', 10000);
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
 
-        // Act
         var result = await _storage.PutAsync(key, stream, compressionType: CompressionType.LZ4, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.Equal(CompressionType.LZ4, result.CompressionType);
         Assert.True(result.CompressedSize < result.Size);
     }
@@ -230,11 +194,9 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task PutAsync_ConcurrentSameKey_SerializesWrites()
     {
-        // Arrange
         const string key = "concurrent-key";
         var tasks = new List<Task<ObjectMetadata>>();
 
-        // Act
         for (int i = 0; i < 10; i++)
         {
             var content = $"content-{i}";
@@ -244,21 +206,17 @@ public sealed class VesselStorageTests : IDisposable
 
         var results = await Task.WhenAll(tasks);
 
-        // Assert
         Assert.All(results, r => Assert.Equal(key, r.Key));
 
-        // Verify final state
-        var metadata = await _storage.GetMetadataAsync(key, cancellationToken: TestContext.Current.CancellationToken);
+        var metadata = _storage.GetMetadata(key);
         Assert.NotNull(metadata);
     }
 
     [Fact]
     public async Task PutAsync_ConcurrentDifferentKeys_ExecutesInParallel()
     {
-        // Arrange
         var tasks = new List<Task<ObjectMetadata>>();
 
-        // Act
         for (int i = 0; i < 10; i++)
         {
             var key = $"parallel-key-{i}";
@@ -269,7 +227,6 @@ public sealed class VesselStorageTests : IDisposable
 
         var results = await Task.WhenAll(tasks);
 
-        // Assert
         Assert.Equal(10, results.Length);
         Assert.All(results, r => Assert.NotNull(r.Hash));
     }
@@ -277,16 +234,13 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task GetAsync_ExistingKey_ReturnsObjectResponse()
     {
-        // Arrange
         const string key = "get-test-key";
         const string content = "Hello, World!";
         await using var putStream = new MemoryStream(Encoding.UTF8.GetBytes(content));
         await _storage.PutAsync(key, putStream, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Act
-        var response = await _storage.GetAsync(key, cancellationToken: TestContext.Current.CancellationToken);
+        var response = _storage.GetStream(key);
 
-        // Assert
         Assert.NotNull(response);
         Assert.Equal(key, response.Metadata.Key);
         Assert.NotNull(response.ContentStream);
@@ -299,49 +253,42 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task GetAsync_NonExistingKey_ThrowsFileNotFoundException()
     {
-        // Act & Assert
         var exception = Assert.Throws<FileNotFoundException>(() =>
-            _storage.GetAsync("non-existing", cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
+            _storage.GetStream("non-existing"));
         Assert.Contains("non-existing", exception.FileName);
     }
 
     [Fact]
     public async Task GetAsync_NullKey_ThrowsArgumentNullException()
     {
-        // Act & Assert
         Assert.Throws<ArgumentNullException>(() =>
-            _storage.GetAsync(null!, cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
+            _storage.GetStream(null!));
     }
 
     [Fact]
     public async Task GetAsync_EmptyKey_ThrowsArgumentException()
     {
-        // Act & Assert
         Assert.Throws<ArgumentException>(() =>
-            _storage.GetAsync("", cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
+            _storage.GetStream(""));
     }
 
     [Fact]
     public async Task GetAsync_WhitespaceKey_ThrowsArgumentException()
     {
-        // Act & Assert
         Assert.Throws<ArgumentException>(() =>
-            _storage.GetAsync("   ", cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
+            _storage.GetStream("   "));
     }
 
     [Fact]
     public async Task GetAsync_CompressedData_ReturnsDecompressedContent()
     {
-        // Arrange
         const string key = "compressed-get-test";
         var content = new string('x', 10000);
         await using var putStream = new MemoryStream(Encoding.UTF8.GetBytes(content));
         await _storage.PutAsync(key, putStream, compressionType: CompressionType.LZ4, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Act
-        var response = await _storage.GetAsync(key, cancellationToken: TestContext.Current.CancellationToken);
+        var response = _storage.GetStream(key);
 
-        // Assert
         using var reader = new StreamReader(response.ContentStream);
         var retrievedContent = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
         Assert.Equal(content, retrievedContent);
@@ -350,20 +297,17 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task GetAsync_ConcurrentReads_ReturnsCorrectData()
     {
-        // Arrange
         const string key = "concurrent-read-key";
         const string content = "concurrent content";
         await using var putStream = new MemoryStream(Encoding.UTF8.GetBytes(content));
         await _storage.PutAsync(key, putStream, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Act
         var tasks = Enumerable.Range(0, 10)
-            .Select(_ => _storage.GetAsync(key, cancellationToken: TestContext.Current.CancellationToken).AsTask())
+            .Select(_ => Task.FromResult(_storage.GetStream(key)))
             .ToList();
 
         var responses = await Task.WhenAll(tasks);
 
-        // Assert
         Assert.Equal(10, responses.Length);
         foreach (var response in responses)
         {
@@ -376,60 +320,50 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task DeleteAsync_ExistingKey_RemovesObjectAndReturnsTrue()
     {
-        // Arrange
         const string key = "delete-test-key";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
         await _storage.PutAsync(key, stream, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Act
-        var result = await _storage.DeleteAsync(key, cancellationToken: TestContext.Current.CancellationToken);
+        var result = await _storage.DeleteAsync(key, TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.True(result);
 
-        // Verify object is gone
         Assert.Throws<FileNotFoundException>(() =>
-            _storage.GetAsync(key, cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
+            _storage.GetStream(key));
     }
 
     [Fact]
     public async Task DeleteAsync_NonExistingKey_ReturnsFalse()
     {
-        // Act
-        var result = await _storage.DeleteAsync("non-existing", cancellationToken: TestContext.Current.CancellationToken);
+        var result = await _storage.DeleteAsync("non-existing", TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.False(result);
     }
 
     [Fact]
     public async Task DeleteAsync_NullKey_ThrowsArgumentNullException()
     {
-        // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            _storage.DeleteAsync(null!, cancellationToken: TestContext.Current.CancellationToken));
+            _storage.DeleteAsync(null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task DeleteAsync_EmptyKey_ThrowsArgumentException()
     {
-        // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _storage.DeleteAsync("", cancellationToken: TestContext.Current.CancellationToken));
+            _storage.DeleteAsync("", TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task DeleteAsync_WhitespaceKey_ThrowsArgumentException()
     {
-        // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _storage.DeleteAsync("   ", cancellationToken: TestContext.Current.CancellationToken));
+            _storage.DeleteAsync("   ", TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task DeleteAsync_DuplicateContent_RemovesMetadataButPreservesBlob()
     {
-        // Arrange
         const string key1 = "dup-key1";
         const string key2 = "dup-key2";
         const string content = "duplicate content";
@@ -442,14 +376,11 @@ public sealed class VesselStorageTests : IDisposable
 
         Assert.Equal(metadata1.Hash, metadata2.Hash);
 
-        // Act
-        var deleted = await _storage.DeleteAsync(key1, cancellationToken: TestContext.Current.CancellationToken);
+        var deleted = await _storage.DeleteAsync(key1, TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.True(deleted);
 
-        // Verify key2 can still be retrieved
-        var response = await _storage.GetAsync(key2, cancellationToken: TestContext.Current.CancellationToken);
+        var response = _storage.GetStream(key2);
         using var reader = new StreamReader(response.ContentStream);
         var retrievedContent = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
         Assert.Equal(content, retrievedContent);
@@ -458,37 +389,31 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task DeleteAsync_LastReference_DeletesBlob()
     {
-        // Arrange
         const string key = "last-ref-key";
         const string content = "unique content for deletion";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
         await _storage.PutAsync(key, stream, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Act
-        var deleted = await _storage.DeleteAsync(key, cancellationToken: TestContext.Current.CancellationToken);
+        var deleted = await _storage.DeleteAsync(key, TestContext.Current.CancellationToken);
 
-        // Assert
         Assert.True(deleted);
-        var metadata = await _storage.GetMetadataAsync(key, cancellationToken: TestContext.Current.CancellationToken);
+        var metadata = _storage.GetMetadata(key);
         Assert.Null(metadata);
     }
 
     [Fact]
     public async Task DeleteAsync_ConcurrentSameKey_SerializesDeletes()
     {
-        // Arrange
         const string key = "concurrent-delete-key";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
         await _storage.PutAsync(key, stream, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Act
         var tasks = Enumerable.Range(0, 5)
-            .Select(_ => _storage.DeleteAsync(key, cancellationToken: TestContext.Current.CancellationToken))
+            .Select(_ => _storage.DeleteAsync(key, TestContext.Current.CancellationToken))
             .ToList();
 
         var results = await Task.WhenAll(tasks);
 
-        // Assert
         Assert.Single(results, r => r);
         Assert.Equal(4, results.Count(r => !r));
     }
@@ -496,17 +421,14 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task GetMetadataAsync_ExistingKey_ReturnsMetadata()
     {
-        // Arrange
         const string key = "metadata-test-key";
         const string fileName = "test.txt";
         const string mimeType = "text/plain";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
         await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileName: fileName, MimeType: mimeType), cancellationToken: TestContext.Current.CancellationToken);
 
-        // Act
-        var metadata = await _storage.GetMetadataAsync(key, cancellationToken: TestContext.Current.CancellationToken);
+        var metadata = _storage.GetMetadata(key);
 
-        // Assert
         Assert.NotNull(metadata);
         Assert.Equal(key, metadata.Value.Key);
         Assert.Equal(fileName, metadata.Value.FileName);
@@ -516,55 +438,44 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task GetMetadataAsync_NonExistingKey_ReturnsNull()
     {
-        // Act
-        var metadata = await _storage.GetMetadataAsync("non-existing", cancellationToken: TestContext.Current.CancellationToken);
+        var metadata = _storage.GetMetadata("non-existing");
 
-        // Assert
         Assert.Null(metadata);
     }
 
     [Fact]
     public async Task GetMetadataAsync_NullKey_ThrowsArgumentNullException()
     {
-        // Act & Assert
         Assert.Throws<ArgumentNullException>(() =>
-            _storage.GetMetadataAsync(null!, cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
+            _storage.GetMetadata(null!));
     }
 
     [Fact]
     public async Task GetMetadataAsync_EmptyKey_ThrowsArgumentException()
     {
-        // Act & Assert
         Assert.Throws<ArgumentException>(() =>
-            _storage.GetMetadataAsync("", cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
+            _storage.GetMetadata(""));
     }
 
     [Fact]
     public async Task GetMetadataAsync_WhitespaceKey_ThrowsArgumentException()
     {
-        // Act & Assert
         Assert.Throws<ArgumentException>(() =>
-            _storage.GetMetadataAsync("   ", cancellationToken: TestContext.Current.CancellationToken).GetAwaiter().GetResult());
+            _storage.GetMetadata("   "));
     }
 
     [Fact]
     public async Task GetAllKeysAsync_EmptyStorage_ReturnsEmpty()
     {
-        // Act
         var keys = new List<string>();
-        await foreach (var key in _storage.GetAllKeysAsync(cancellationToken: TestContext.Current.CancellationToken))
-        {
-            keys.Add(key);
-        }
+        keys.AddRange(_storage.GetAllKeys());
 
-        // Assert
         Assert.Empty(keys);
     }
 
     [Fact]
     public async Task GetAllKeysAsync_WithMultipleKeys_ReturnsAllKeys()
     {
-        // Arrange
         var expectedKeys = new[] { "key1", "key2", "key3" };
         foreach (var key in expectedKeys)
         {
@@ -572,14 +483,9 @@ public sealed class VesselStorageTests : IDisposable
             await _storage.PutAsync(key, stream, cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        // Act
         var keys = new List<string>();
-        await foreach (var key in _storage.GetAllKeysAsync(cancellationToken: TestContext.Current.CancellationToken))
-        {
-            keys.Add(key);
-        }
+        keys.AddRange(_storage.GetAllKeys());
 
-        // Assert
         Assert.Equal(3, keys.Count);
         Assert.All(expectedKeys, k => Assert.Contains(k, keys));
     }
@@ -587,7 +493,6 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task GetAllKeysAsync_WithPrefix_ReturnsMatchingKeys()
     {
-        // Arrange
         var keys = new[] { "user/1", "user/2", "admin/1", "admin/2" };
         foreach (var key in keys)
         {
@@ -595,14 +500,9 @@ public sealed class VesselStorageTests : IDisposable
             await _storage.PutAsync(key, stream, cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        // Act
         var userKeys = new List<string>();
-        await foreach (var key in _storage.GetAllKeysAsync("user/", cancellationToken: TestContext.Current.CancellationToken))
-        {
-            userKeys.Add(key);
-        }
+        userKeys.AddRange(_storage.GetAllKeys("user/"));
 
-        // Assert
         Assert.Equal(2, userKeys.Count);
         Assert.Contains("user/1", userKeys);
         Assert.Contains("user/2", userKeys);
@@ -611,12 +511,10 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task GetAllKeysAsync_NullPrefix_ThrowsArgumentNullException()
     {
-        // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(async () =>
         {
-            await foreach (var key in _storage.GetAllKeysAsync(null!, cancellationToken: TestContext.Current.CancellationToken))
+            foreach (var key in _storage.GetAllKeys(null!))
             {
-                // Should not reach here
             }
         });
     }
@@ -624,7 +522,6 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task GetAllKeysAsync_EmptyPrefix_ReturnsAllKeys()
     {
-        // Arrange
         var expectedKeys = new[] { "key1", "key2" };
         foreach (var key in expectedKeys)
         {
@@ -632,21 +529,15 @@ public sealed class VesselStorageTests : IDisposable
             await _storage.PutAsync(key, stream, cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        // Act
         var keys = new List<string>();
-        await foreach (var key in _storage.GetAllKeysAsync("", cancellationToken: TestContext.Current.CancellationToken))
-        {
-            keys.Add(key);
-        }
+        keys.AddRange(_storage.GetAllKeys(""));
 
-        // Assert
         Assert.Equal(2, keys.Count);
     }
 
     [Fact]
     public async Task DisposeAsync_WithLogger_DoesNotThrow()
     {
-        // Arrange
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"VesselTests_{Guid.NewGuid():N}");
         var mockLogger = new Mock<IVesselLogger>();
         var options = new VesselStorageOptions
@@ -656,13 +547,10 @@ public sealed class VesselStorageTests : IDisposable
         };
         var storage = new VesselStorage(tempDirectory, options);
 
-        // Act
         storage.Dispose();
 
-        // Assert
         mockLogger.Verify(l => l.Log(VesselLogLevel.Information, It.IsAny<string>()), Times.AtLeastOnce);
 
-        // Cleanup
         if (Directory.Exists(tempDirectory))
         {
             Directory.Delete(tempDirectory, recursive: true);
@@ -672,7 +560,6 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task DisposeAsync_WithoutLogger_CompletesSuccessfully()
     {
-        // Arrange
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"VesselTests_{Guid.NewGuid():N}");
         var options = new VesselStorageOptions
         {
@@ -681,13 +568,10 @@ public sealed class VesselStorageTests : IDisposable
         };
         var storage = new VesselStorage(tempDirectory, options);
 
-        // Act
         storage.Dispose();
 
-        // Assert - successful completion without exception
         Assert.True(true);
 
-        // Cleanup
         if (Directory.Exists(tempDirectory))
         {
             Directory.Delete(tempDirectory, recursive: true);
@@ -697,7 +581,6 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task DisposeAsync_CalledMultipleTimes_ThrowsObjectDisposedException()
     {
-        // Arrange
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"VesselTests_{Guid.NewGuid():N}");
         var options = new VesselStorageOptions
         {
@@ -706,13 +589,10 @@ public sealed class VesselStorageTests : IDisposable
         };
         var storage = new VesselStorage(tempDirectory, options);
 
-        // Act
         storage.Dispose();
 
-        // Assert
         Assert.Throws<ObjectDisposedException>(() => storage.Dispose());
 
-        // Cleanup
         if (Directory.Exists(tempDirectory))
         {
             Directory.Delete(tempDirectory, recursive: true);
@@ -722,7 +602,6 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task DisposeAsync_ReturnsCompletedTask()
     {
-        // Arrange
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"VesselTests_{Guid.NewGuid():N}");
         var options = new VesselStorageOptions
         {
@@ -731,13 +610,10 @@ public sealed class VesselStorageTests : IDisposable
         };
         var storage = new VesselStorage(tempDirectory, options);
 
-        // Act
         storage.Dispose();
 
-        // Assert
         Assert.True(true);
 
-        // Cleanup
         if (Directory.Exists(tempDirectory))
         {
             Directory.Delete(tempDirectory, recursive: true);
@@ -747,7 +623,6 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task DisposeAsync_AfterStoreOperations_DisposesCorrectly()
     {
-        // Arrange
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"VesselTests_{Guid.NewGuid():N}");
         var options = new VesselStorageOptions
         {
@@ -756,19 +631,15 @@ public sealed class VesselStorageTests : IDisposable
         };
         var storage = new VesselStorage(tempDirectory, options);
 
-        // Perform some operations
         const string key = "test-key";
         const string content = "test content";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
         await storage.PutAsync(key, stream, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Act
         storage.Dispose();
 
-        // Assert
         Assert.Throws<ObjectDisposedException>(() => storage.Dispose());
 
-        // Cleanup
         if (Directory.Exists(tempDirectory))
         {
             Directory.Delete(tempDirectory, recursive: true);
@@ -778,7 +649,6 @@ public sealed class VesselStorageTests : IDisposable
     [Fact]
     public async Task DisposeAsync_ConcurrentCalls_ThrowsAtLeastOnce()
     {
-        // Arrange
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"VesselTests_{Guid.NewGuid():N}");
         var options = new VesselStorageOptions
         {
@@ -788,7 +658,6 @@ public sealed class VesselStorageTests : IDisposable
         var storage = new VesselStorage(tempDirectory, options);
         var exceptions = new ConcurrentQueue<Exception>();
 
-        // Act
         var tasks = Enumerable.Range(0, 5)
             .Select(_ => Task.Run(() =>
             {
@@ -805,10 +674,8 @@ public sealed class VesselStorageTests : IDisposable
 
         await Task.WhenAll(tasks);
 
-        // Assert
         Assert.NotEmpty(exceptions);
 
-        // Cleanup
         if (Directory.Exists(tempDirectory))
         {
             Directory.Delete(tempDirectory, recursive: true);

@@ -1,1 +1,2 @@
 * Compare current compression packages with NativeCompressions
+* Replace logger with safer one

@@ -8,7 +8,7 @@ namespace Vessel.Benchmark;
 [CPUUsageDiagnoser]
 [MemoryDiagnoser]
 [SimpleJob(RuntimeMoniker.Net10_0, baseline: true)]
-//[SimpleJob(RuntimeMoniker.NativeAot10_0)]
+[SimpleJob(RuntimeMoniker.NativeAot10_0)]
 public class Benchmarks
 {
     private VesselStorage? _storage;
@@ -16,8 +16,8 @@ public class Benchmarks
     private string _storageRoot = string.Empty;
     private int _iteration = 0;
 
-    //[Params(CompressionType.None, CompressionType.Zstd, CompressionType.LZ4)]
-    public CompressionType CompressionType { get; set; } = CompressionType.None;
+    [Params(CompressionType.None, CompressionType.Zstd, CompressionType.LZ4)]
+    public CompressionType CompressionType { get; set; }
 
     [Params(1024, 1024 * 512)]
     public int PayloadSize { get; set; }
@@ -69,7 +69,7 @@ public class Benchmarks
     public void ReadRandom()
     {
         var key = $"init-{Random.Shared.Next(0, 100)}";
-        using var response = _storage!.Get(key);
+        using var response = _storage!.GetStream(key);
         response.ContentStream.CopyTo(Stream.Null);
     }
 }

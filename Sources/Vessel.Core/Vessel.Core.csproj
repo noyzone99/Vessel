@@ -6,6 +6,7 @@
 		<Nullable>enable</Nullable>
 		<RootNamespace>Vessel</RootNamespace>
 		<IsAotCompatible>true</IsAotCompatible>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	</PropertyGroup>
 
 	<PropertyGroup>
@@ -25,7 +26,6 @@
 		<RepositoryType>git</RepositoryType>
 		<PublishRepositoryUrl>true</PublishRepositoryUrl>
 		<GenerateDependencyFile>false</GenerateDependencyFile>
-		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	</PropertyGroup>
 
 	<ItemGroup>

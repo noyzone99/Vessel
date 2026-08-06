@@ -139,6 +139,13 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
             var tempFilePath = GetTempFilePath();
             try
             {
+#if NET10_0_OR_GREATER
+                await File.WriteAllBytesAsync(tempFilePath, dataToWrite, cancellationToken).ConfigureAwait(false);
+                var dir = Path.GetDirectoryName(destinationPath)!;
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+                File.Move(tempFilePath, destinationPath, overwrite: false);
+#else
                 await using (var fs = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                     bufferSize: 1,
                     FileOptions.Asynchronous))
@@ -150,6 +157,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
                 if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
                 File.Move(tempFilePath, destinationPath, overwrite: false);
+#endif
             }
             catch (IOException) when (File.Exists(destinationPath)) { }
             finally { TryDeleteFile(tempFilePath); }
@@ -341,7 +349,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         {
             return contentHash;
         }
-        return string.Concat(contentHash, "-", compressionType.GetHashCode());
+        return $"{contentHash}-{(int)compressionType}";
     }
 
     /// <summary>

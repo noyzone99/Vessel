@@ -1,4 +1,4 @@
-﻿using Moq;
+using Moq;
 using System.Text;
 using Vessel.Logging;
 using Vessel.Models;
@@ -6,8 +6,8 @@ using Vessel.Models;
 namespace Vessel.Core.UnitTests;
 
 /// <summary>
-/// Tests for VesselStorage with metadata compression enabled.
-/// Verifies end-to-end storage functionality with compressed metadata.
+/// Tests for VesselStorage with metadata compression enabled. Verifies end-to-end storage functionality with compressed
+/// metadata.
 /// </summary>
 public sealed class VesselStorageCompressionTests : IDisposable
 {
@@ -50,7 +50,7 @@ public sealed class VesselStorageCompressionTests : IDisposable
         Assert.NotNull(metadata.Hash);
         Assert.True(metadata.Size > 0);
 
-        var response = await storage.GetAsync(key, TestContext.Current.CancellationToken);
+        var response = storage.GetStream(key);
         Assert.Equal(key, response.Metadata.Key);
         Assert.Equal(metadata.Hash, response.Metadata.Hash);
     }
@@ -70,10 +70,7 @@ public sealed class VesselStorageCompressionTests : IDisposable
         await storage.PutAsync("key3", stream3, cancellationToken: TestContext.Current.CancellationToken);
 
         var keys = new List<string>();
-        await foreach (var key in storage.GetAllKeysAsync(cancellationToken: TestContext.Current.CancellationToken))
-        {
-            keys.Add(key);
-        }
+        keys.AddRange(storage.GetAllKeys());
 
         Assert.Equal(3, keys.Count);
         Assert.Contains("key1", keys);
@@ -90,11 +87,11 @@ public sealed class VesselStorageCompressionTests : IDisposable
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test content"));
         await storage.PutAsync("delete-key", stream, cancellationToken: TestContext.Current.CancellationToken);
 
-        var deleted = await storage.DeleteAsync("delete-key", TestContext.Current.CancellationToken);
+        var deleted = await storage.DeleteAsync("delete-key", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(deleted);
         Assert.Throws<FileNotFoundException>(() =>
-            storage.GetAsync("delete-key", TestContext.Current.CancellationToken).GetAwaiter().GetResult());
+            storage.GetStream("delete-key"));
     }
 
     [Fact]
@@ -124,7 +121,7 @@ public sealed class VesselStorageCompressionTests : IDisposable
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test content"));
         var stored = await storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileName: "test.txt", FileExtension: ".txt", MimeType: "text/plain"), cancellationToken: TestContext.Current.CancellationToken);
 
-        var metadata = await storage.GetMetadataAsync(key, TestContext.Current.CancellationToken);
+        var metadata = storage.GetMetadata(key);
 
         Assert.NotNull(metadata);
         Assert.Equal(key, metadata.Value.Key);
@@ -152,16 +149,13 @@ public sealed class VesselStorageCompressionTests : IDisposable
 
         foreach (var key in keys)
         {
-            var metadata = await storage.GetMetadataAsync(key, TestContext.Current.CancellationToken);
+            var metadata = storage.GetMetadata(key);
             Assert.NotNull(metadata);
             Assert.Equal(key, metadata.Value.Key);
         }
 
         var allKeys = new List<string>();
-        await foreach (var key in storage.GetAllKeysAsync(cancellationToken: TestContext.Current.CancellationToken))
-        {
-            allKeys.Add(key);
-        }
+        allKeys.AddRange(storage.GetAllKeys());
         Assert.Equal(operationCount, allKeys.Count);
     }
 
@@ -202,10 +196,7 @@ public sealed class VesselStorageCompressionTests : IDisposable
         await storage.PutAsync("admins/alice/file1", stream3, cancellationToken: TestContext.Current.CancellationToken);
 
         var userKeys = new List<string>();
-        await foreach (var key in storage.GetAllKeysAsync(prefix: "users/", cancellationToken: TestContext.Current.CancellationToken))
-        {
-            userKeys.Add(key);
-        }
+        userKeys.AddRange(storage.GetAllKeys(prefix: "users/"));
 
         Assert.Equal(2, userKeys.Count);
         Assert.Contains("users/john/file1", userKeys);
