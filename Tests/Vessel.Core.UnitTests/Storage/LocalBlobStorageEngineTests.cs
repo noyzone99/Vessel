@@ -543,7 +543,7 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
             hash = Hash;
         }
 
-        engine.DeleteBlob(hash);
+        engine.QueueDeleteBlob(hash);
 
         Assert.Throws<FileNotFoundException>(() => engine.OpenBlobRead(hash, CompressionType.None));
     }
@@ -554,31 +554,31 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
         var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
         const string nonExistentHash = "0000000000000000000000000000000000000000000000000000000000000000";
 
-        engine.DeleteBlob(nonExistentHash);
+        engine.QueueDeleteBlob(nonExistentHash);
     }
 
     [Fact]
-    public void DeleteBlob_NullHash_ThrowsArgumentOutOfRangeException()
+    public void DeleteBlob_NullHash_ThrowsArgumentException()
     {
         var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
 
-        Assert.ThrowsAny<ArgumentOutOfRangeException>(() => engine.DeleteBlob(null!));
+        Assert.ThrowsAny<ArgumentException>(() => engine.QueueDeleteBlob(null!));
     }
 
     [Fact]
-    public void DeleteBlob_EmptyHash_ThrowsArgumentOutOfRangeException()
+    public void DeleteBlob_EmptyHash_ThrowsArgumentException()
     {
         var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
 
-        Assert.ThrowsAny<ArgumentOutOfRangeException>(() => engine.DeleteBlob(string.Empty));
+        Assert.ThrowsAny<ArgumentException>(() => engine.QueueDeleteBlob(string.Empty));
     }
 
     [Fact]
-    public void DeleteBlob_WhitespaceHash_ThrowsArgumentOutOfRangeException()
+    public void DeleteBlob_WhitespaceHash_ThrowsArgumentException()
     {
         var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
 
-        Assert.ThrowsAny<ArgumentOutOfRangeException>(() => engine.DeleteBlob("   "));
+        Assert.ThrowsAny<ArgumentException>(() => engine.QueueDeleteBlob("   "));
     }
 
     [Fact]
@@ -757,12 +757,12 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
     }
 
     [Fact]
-    public void DeleteBlob_ShortHash_ThrowsArgumentOutOfRangeException()
+    public void DeleteBlob_ShortHash_ThrowsArgumentException()
     {
         var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
         const string shortHash = "ab";
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => engine.DeleteBlob(shortHash));
+        Assert.Throws<ArgumentException>(() => engine.QueueDeleteBlob(shortHash));
     }
 
     [Fact]

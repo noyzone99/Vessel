@@ -33,7 +33,7 @@ internal interface IBlobStorageEngine
     /// </summary>
     /// <param name="hash">The content hash identifying the blob to remove.</param>
     /// <exception cref="ArgumentException">Thrown when <paramref name="hash"/> is null, empty, or whitespace.</exception>
-    void DeleteBlob(string hash);
+    void QueueDeleteBlob(string hash);
 
     /// <summary>
     /// Removes temporary files that may have been left behind by interrupted writes.

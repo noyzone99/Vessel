@@ -16,6 +16,7 @@ internal sealed class MetadataRepository : IMetadataRepository
     private readonly IMaintainer _metadataDbMaintainer;
     private readonly IMaintainer _refCountDbMaintainer;
     private readonly IVesselLogger? _logger;
+    private int _disposed;
 
     /// <summary>
     /// Initializes the metadata repository against the supplied storage root.
@@ -58,6 +59,7 @@ internal sealed class MetadataRepository : IMetadataRepository
     /// <inheritdoc/>
     public ObjectMetadata? Get(string key)
     {
+        ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
         var result = _metadataDb.TryGet(key, out var metadata);
@@ -74,6 +76,7 @@ internal sealed class MetadataRepository : IMetadataRepository
     /// <inheritdoc/>
     public void Upsert(in ObjectMetadata metadata)
     {
+        ThrowIfDisposed();
         if (_metadataDb.TryGet(metadata.Key, out var oldMetadata))
         {
             if (oldMetadata.Hash == metadata.Hash)
@@ -91,6 +94,7 @@ internal sealed class MetadataRepository : IMetadataRepository
     /// <inheritdoc/>
     public bool Delete(string key)
     {
+        ThrowIfDisposed();
         if (!_metadataDb.TryGet(key, out var metadata)) return false;
         DecrementRefCount(metadata.Hash);
         return _metadataDb.TryDelete(key, out _);
@@ -99,12 +103,14 @@ internal sealed class MetadataRepository : IMetadataRepository
     /// <inheritdoc/>
     public bool IsHashReferenced(string hash)
     {
+        ThrowIfDisposed();
         return _refCountDb.TryGet(hash, out var count) && count > 0;
     }
 
     /// <inheritdoc/>
     public async IAsyncEnumerable<string> IterateKeysAsync(string prefix, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        ThrowIfDisposed();
         using var iterator = _metadataDb.CreateIterator();
         var enumeratedKeys = 0L;
 
@@ -156,9 +162,12 @@ internal sealed class MetadataRepository : IMetadataRepository
     /// </summary>
     public void Dispose()
     {
+        ObjectDisposedException.ThrowIf(Interlocked.Exchange(ref _disposed, 1) != 0, this);
         _metadataDbMaintainer.Dispose();
         _metadataDb.Dispose();
         _refCountDbMaintainer.Dispose();
         _refCountDb.Dispose();
     }
+
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 }

@@ -2,6 +2,7 @@ using K4os.Compression.LZ4;
 using K4os.Compression.LZ4.Streams;
 using System.Buffers;
 using System.Security.Cryptography;
+using System.Threading.Channels;
 using Vessel.Logging;
 using Vessel.Models;
 using ZstdSharp;
@@ -11,12 +12,16 @@ namespace Vessel.Storage;
 /// <summary>
 /// Persists and retrieves object payload blobs from a local filesystem directory.
 /// </summary>
-internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
+internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
 {
     private const int BufferSize = 64 * 1024;
     private readonly string _blobsPath;
     private readonly string _tmpPath;
+    private readonly Channel<string> _deleteChannel;
+    private readonly Task _deleteWorker;
+    private readonly CancellationTokenSource _cts = new();
     private readonly IVesselLogger? _logger;
+    private int _disposed;
 
     /// <summary>
     /// Initializes the local blob storage engine under the supplied storage root.
@@ -33,16 +38,44 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
         var rootPath = Path.GetFullPath(storageBasePath);
         _blobsPath = Path.Join(rootPath, "blobs");
         _tmpPath = Path.Join(rootPath, "tmp");
+        Directory.CreateDirectory(_blobsPath);
+        Directory.CreateDirectory(_tmpPath);
 
-        if (!Directory.Exists(_blobsPath)) Directory.CreateDirectory(_blobsPath);
-        if (!Directory.Exists(_tmpPath)) Directory.CreateDirectory(_tmpPath);
+        _deleteChannel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            AllowSynchronousContinuations = true
+        });
+
+        _deleteWorker = Task.Run(ProcessDeletionsAsync);
 
         _logger?.Log(VesselLogLevel.Information, $"Initialized blob storage at '{rootPath}'.");
+    }
+
+    private async Task ProcessDeletionsAsync()
+    {
+        await foreach (var hash in _deleteChannel.Reader.ReadAllAsync(_cts.Token))
+        {
+            try
+            {
+                var path = GetBlobPath(hash);
+                TryDeleteFile(path);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Log(VesselLogLevel.Error, $"Background delete failed for {hash}: {ex.Message}");
+            }
+        }
     }
 
     /// <inheritdoc/>
     public async Task<BlobInfo> WriteBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
     {
+        ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(inputStream);
 
         if (inputStream.CanSeek && inputStream.Length <= BufferSize)
@@ -181,6 +214,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
     /// <inheritdoc/>
     public Stream OpenBlobRead(string hash, CompressionType compressionType)
     {
+        ThrowIfDisposed();
         var path = GetBlobPath(hash);
         var fileSource = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
             BufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
@@ -195,15 +229,23 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
     }
 
     /// <inheritdoc/>
-    public void DeleteBlob(string hash)
+    public void QueueDeleteBlob(string hash)
     {
-        var path = GetBlobPath(hash);
-        if (File.Exists(path)) File.Delete(path);
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(hash);
+
+        if (hash.Length < 4)
+        {
+            throw new ArgumentException("Blob hash must contain at least 4 characters.", nameof(hash));
+        }
+
+        _deleteChannel.Writer.TryWrite(hash);
     }
 
     /// <inheritdoc/>
     public void CleanupOrphanedTempFiles()
     {
+        ThrowIfDisposed();
         if (!Directory.Exists(_tmpPath)) return;
 
         foreach (var tempFile in Directory.EnumerateFiles(_tmpPath, "*.tmp", SearchOption.TopDirectoryOnly))
@@ -237,8 +279,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
         {
             return contentHash;
         }
-
-        return $"{contentHash}-{compressionType}";
+        return string.Concat(contentHash, "-", compressionType.GetHashCode());
     }
 
     /// <summary>
@@ -279,10 +320,10 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
     /// <returns>The corresponding LZ4 compression level.</returns>
     private static LZ4Level GetLZ4Level(CompressionLevel level) => level switch
     {
-        CompressionLevel.Fastest => K4os.Compression.LZ4.LZ4Level.L00_FAST,
-        CompressionLevel.High => K4os.Compression.LZ4.LZ4Level.L04_HC,
-        CompressionLevel.Ultra => K4os.Compression.LZ4.LZ4Level.L09_HC,
-        _ => K4os.Compression.LZ4.LZ4Level.L00_FAST
+        CompressionLevel.Fastest => LZ4Level.L00_FAST,
+        CompressionLevel.High => LZ4Level.L04_HC,
+        CompressionLevel.Ultra => LZ4Level.L09_HC,
+        _ => LZ4Level.L00_FAST
     };
 
     private static async Task<byte[]> CompressBufferAsync(ReadOnlyMemory<byte> source, CompressionType type, CompressionLevel level)
@@ -325,4 +366,14 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
             });
         }
     }
+
+    public void Dispose()
+    {
+        ObjectDisposedException.ThrowIf(Interlocked.Exchange(ref _disposed, 1) != 0, this);
+        _cts.Cancel();
+        _deleteChannel.Writer.TryComplete();
+    }
+
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
 }

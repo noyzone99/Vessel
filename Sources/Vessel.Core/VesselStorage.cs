@@ -27,10 +27,12 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
     private readonly LocalBlobStorageEngine _blobStorageEngine = new(storageBasePath, options?.Logger);
     private readonly MetadataRepository _metadataRepository = new(storageBasePath, options?.EnableMetadataCompression ?? false, options?.Logger);
     private readonly SemaphoreSlim[] _keyLocks = [.. Enumerable.Range(0, 1024).Select(_ => new SemaphoreSlim(1, 1))];
+    private int _disposed;
 
     /// <inheritdoc/>
     public async Task<ObjectMetadata> PutAsync(string key, Stream contentStream, bool overwrite = false, ObjectInfo fileInfo = default, CompressionType compressionType = CompressionType.None, CompressionLevel compressionLevel = CompressionLevel.Balanced, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentNullException.ThrowIfNull(contentStream);
 
@@ -59,8 +61,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
                 if (!isStillReferenced)
                 {
                     _logger?.Log(VesselLogLevel.Information, $"Deleting superseded blob '{existingMetadata.Value.Hash}' for object '{key}'.");
-                    _blobStorageEngine.DeleteBlob(existingMetadata.Value.Hash);
-                    //TODO: try with Task.Run(() => _blobStorageEngine.DeleteBlob(existingMetadata.Value.Hash));
+                    _blobStorageEngine.QueueDeleteBlob(existingMetadata.Value.Hash);
                 }
             }
 
@@ -81,6 +82,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
     /// <inheritdoc/>
     public async ValueTask<ObjectResponse> GetAsync(string key, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
         var metadata = _metadataRepository.Get(key);
@@ -100,6 +102,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
     public ObjectResponse Get(string key)
     {
         {
+            ThrowIfDisposed();
             ArgumentException.ThrowIfNullOrWhiteSpace(key);
             var metadata = _metadataRepository.Get(key);
             if (metadata is null)
@@ -118,6 +121,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(string key, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
         _logger?.Log(VesselLogLevel.Information, $"Deleting object '{key}'.");
@@ -145,7 +149,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
             if (!isStillReferenced)
             {
                 _logger?.Log(VesselLogLevel.Information, $"Deleting unreferenced blob '{metadata.Value.Hash}' after removing object '{key}'.");
-                _blobStorageEngine.DeleteBlob(metadata.Value.Hash);
+                _blobStorageEngine.QueueDeleteBlob(metadata.Value.Hash);
             }
 
             _logger?.Log(VesselLogLevel.Information, $"Deleted object '{key}'.");
@@ -165,6 +169,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
     /// <inheritdoc/>
     public async ValueTask<ObjectMetadata?> GetMetadataAsync(string key, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         _logger?.Log(VesselLogLevel.Debug, $"Fetching metadata for object '{key}'.");
         return _metadataRepository.Get(key);
@@ -173,6 +178,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
     /// <inheritdoc/>
     public ObjectMetadata? GetMetadata(string key)
     {
+        ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         _logger?.Log(VesselLogLevel.Debug, $"Fetching metadata for object '{key}'.");
         return _metadataRepository.Get(key);
@@ -181,6 +187,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
     /// <inheritdoc/>
     public IAsyncEnumerable<string> GetAllKeysAsync(string prefix = "", CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(prefix);
 
         return GetAllKeysAsyncInternal(cancellationToken);
@@ -209,5 +216,13 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
     /// <summary>
     /// Releases the resources owned by the storage instance.
     /// </summary>
-    public void Dispose() => _metadataRepository.Dispose();
+    public void Dispose()
+    {
+        ObjectDisposedException.ThrowIf(Interlocked.Exchange(ref _disposed, 1) != 0, this);
+
+        _blobStorageEngine.Dispose();
+        _metadataRepository.Dispose();
+    }
+
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 }
