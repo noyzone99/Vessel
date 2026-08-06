@@ -52,6 +52,9 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         _logger?.Log(VesselLogLevel.Information, $"Initialized blob storage at '{rootPath}'.");
     }
 
+    /// <summary>
+    /// Processes queued blob deletion requests from the background worker.
+    /// </summary>
     private async Task ProcessDeletionsAsync()
     {
         await foreach (var hash in _deleteChannel.Reader.ReadAllAsync(_cts.Token))
@@ -86,10 +89,19 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         return await WriteLargeBlobAsync(inputStream, compressionType, compressionLevel, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Writes a small payload directly to disk after optionally compressing it.
+    /// </summary>
+    /// <param name="inputStream">The readable source stream that contains the payload bytes.</param>
+    /// <param name="compressionType">The compression codec to apply to the payload.</param>
+    /// <param name="compressionLevel">The desired compression strength for the selected codec.</param>
+    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <returns>Metadata describing the resulting blob file and its effective storage size.</returns>
     private async Task<BlobInfo> WriteSmallBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
     {
         int originalSize = (int)inputStream.Length;
         byte[] sourceBuffer = ArrayPool<byte>.Shared.Rent(originalSize);
+        byte[]? compressedBuffer = null;
 
         try
         {
@@ -105,6 +117,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
 
             var blobIdentifier = GetBlobIdentifier(hash, compressionType);
             var destinationPath = GetBlobPath(blobIdentifier);
+
             if (File.Exists(destinationPath))
             {
                 return new BlobInfo(blobIdentifier, originalSize, new FileInfo(destinationPath).Length);
@@ -118,19 +131,24 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
             }
             else
             {
-                var compressedBuffer = await CompressBufferAsync(sourceMemory, compressionType, compressionLevel).ConfigureAwait(false);
-                dataToWrite = compressedBuffer;
+                compressedBuffer = ArrayPool<byte>.Shared.Rent(originalSize + 1024);
+                int compressedSize = CompressBuffer(sourceMemory.Span, compressedBuffer, compressionType, compressionLevel);
+                dataToWrite = compressedBuffer.AsMemory(0, compressedSize);
             }
 
             var tempFilePath = GetTempFilePath();
             try
             {
-                await using (var fs = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, BufferSize, FileOptions.Asynchronous))
+                await using (var fs = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                    bufferSize: 1,
+                    FileOptions.Asynchronous))
                 {
                     await fs.WriteAsync(dataToWrite, cancellationToken).ConfigureAwait(false);
                 }
 
-                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+                var dir = Path.GetDirectoryName(destinationPath)!;
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
                 File.Move(tempFilePath, destinationPath, overwrite: false);
             }
             catch (IOException) when (File.Exists(destinationPath)) { }
@@ -141,9 +159,18 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         finally
         {
             ArrayPool<byte>.Shared.Return(sourceBuffer);
+            if (compressedBuffer != null) ArrayPool<byte>.Shared.Return(compressedBuffer);
         }
     }
 
+    /// <summary>
+    /// Writes a large payload to a temporary file and then atomically moves it into the final blob location.
+    /// </summary>
+    /// <param name="inputStream">The readable source stream that contains the payload bytes.</param>
+    /// <param name="compressionType">The compression codec to apply to the payload.</param>
+    /// <param name="compressionLevel">The desired compression strength for the selected codec.</param>
+    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <returns>Metadata describing the resulting blob file and its effective storage size.</returns>
     private async Task<BlobInfo> WriteLargeBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
     {
         var tempFilePath = GetTempFilePath();
@@ -255,6 +282,35 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
     }
 
     /// <summary>
+    /// Compresses the supplied bytes with the requested codec and compression level.
+    /// </summary>
+    /// <param name="source">The uncompressed source bytes.</param>
+    /// <param name="destination">The buffer that receives the compressed bytes.</param>
+    /// <param name="type">The compression codec to use.</param>
+    /// <param name="level">The requested compression strength.</param>
+    /// <returns>The number of compressed bytes written into the destination buffer.</returns>
+    private static int CompressBuffer(ReadOnlySpan<byte> source, byte[] destination, CompressionType type, CompressionLevel level)
+    {
+        if (type == CompressionType.Zstd)
+        {
+            using var compressor = new Compressor(GetZstdLevel(level));
+            return compressor.Wrap(source, destination);
+        }
+
+        if (type == CompressionType.LZ4)
+        {
+            using var memStream = new MemoryStream(destination);
+            using (var lz4Stream = LZ4Stream.Encode(memStream, new LZ4EncoderSettings { CompressionLevel = GetLZ4Level(level) }, leaveOpen: true))
+            {
+                lz4Stream.Write(source);
+            }
+            return (int)memStream.Position;
+        }
+
+        return 0;
+    }
+
+    /// <summary>
     /// Best-effort deletes a file if it exists and can be removed without raising an exception.
     /// </summary>
     /// <param name="path">The full path of the file to delete.</param>
@@ -273,6 +329,12 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         return Path.Join(_blobsPath, hash.AsSpan(0, 2), hash.AsSpan(2, 2), $"{hash}.blob");
     }
 
+    /// <summary>
+    /// Builds a stable blob identifier that includes the compression codec when the payload is stored compressed.
+    /// </summary>
+    /// <param name="contentHash">The content hash of the original payload.</param>
+    /// <param name="compressionType">The codec used to persist the blob.</param>
+    /// <returns>The blob identifier used for the on-disk path.</returns>
     private static string GetBlobIdentifier(string contentHash, CompressionType compressionType)
     {
         if (compressionType == CompressionType.None)
@@ -326,18 +388,10 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         _ => LZ4Level.L00_FAST
     };
 
-    private static async Task<byte[]> CompressBufferAsync(ReadOnlyMemory<byte> source, CompressionType type, CompressionLevel level)
-    {
-        await using var compressedStream = new MemoryStream();
-        await using (var targetStream = WrapStream(compressedStream, type, level))
-        {
-            await targetStream.WriteAsync(source, CancellationToken.None).ConfigureAwait(false);
-            await targetStream.FlushAsync(CancellationToken.None).ConfigureAwait(false);
-        }
-
-        return compressedStream.ToArray();
-    }
-
+    /// <summary>
+    /// Creates a unique temporary file path inside the engine's temporary directory.
+    /// </summary>
+    /// <returns>The path of a new temporary file to use for a pending blob write.</returns>
     private string GetTempFilePath()
     {
         Span<char> guidChars = stackalloc char[32];
@@ -367,6 +421,9 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         }
     }
 
+    /// <summary>
+    /// Stops the background delete worker and releases the engine's disposable resources.
+    /// </summary>
     public void Dispose()
     {
         ObjectDisposedException.ThrowIf(Interlocked.Exchange(ref _disposed, 1) != 0, this);
@@ -374,6 +431,10 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         _deleteChannel.Writer.TryComplete();
     }
 
+    /// <summary>
+    /// Throws an exception when the storage engine has already been disposed.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">Thrown when the engine can no longer be used.</exception>
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
 }

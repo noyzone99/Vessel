@@ -169,5 +169,9 @@ internal sealed class MetadataRepository : IMetadataRepository
         _refCountDb.Dispose();
     }
 
+    /// <summary>
+    /// Throws an exception when the repository has already been disposed.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">Thrown when the repository is no longer usable.</exception>
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 }

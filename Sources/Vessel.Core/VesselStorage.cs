@@ -192,6 +192,11 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
 
         return GetAllKeysAsyncInternal(cancellationToken);
 
+        /// <summary>
+        /// Enumerates the metadata keys that match the configured prefix.
+        /// </summary>
+        /// <param name="localToken">A cancellation token that can stop the enumeration early.</param>
+        /// <returns>An asynchronous sequence of matching keys.</returns>
         async IAsyncEnumerable<string> GetAllKeysAsyncInternal([EnumeratorCancellation] CancellationToken localToken)
         {
             _logger?.Log(VesselLogLevel.Debug, $"Enumerating keys with prefix '{prefix}'.");
@@ -224,5 +229,9 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
         _metadataRepository.Dispose();
     }
 
+    /// <summary>
+    /// Throws an exception when the storage instance has already been disposed.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">Thrown when the storage instance can no longer be used.</exception>
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 }
