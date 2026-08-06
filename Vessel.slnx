@@ -1,8 +1,6 @@
 <Solution>
-  <Folder Name="/Examples/" />
-  <Folder Name="/Solution Items/">
-    <File Path="benchmark.md" />
-    <File Path="TODO.txt" />
+  <Folder Name="/Examples/">
+    <Project Path="Examples/Vessel.Examples.ConsoleApp/Vessel.Examples.ConsoleApp.csproj" />
   </Folder>
   <Folder Name="/Sources/">
     <Project Path="Sources/Vessel.Core/Vessel.Core.csproj" />
@@ -10,6 +8,5 @@
   <Folder Name="/Tests/">
     <Project Path="Tests/Vessel.Benchmark/Vessel.Benchmark.csproj" Id="13c9fa6e-8bda-4ad3-a94c-87ff51c76f5d" />
     <Project Path="Tests/Vessel.Core.UnitTests/Vessel.Core.UnitTests.csproj" />
-    <Project Path="Vessel.TestZoneTree/Vessel.TestZoneTree.csproj" Id="20b277cb-ce43-4d89-b4eb-23fee18effbf" />
   </Folder>
 </Solution>

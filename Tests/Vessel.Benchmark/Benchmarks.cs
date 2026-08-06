@@ -8,7 +8,7 @@ namespace Vessel.Benchmark;
 [CPUUsageDiagnoser]
 [MemoryDiagnoser]
 [SimpleJob(RuntimeMoniker.Net10_0, baseline: true)]
-//[SimpleJob(RuntimeMoniker.NativeAot10_0)]
+[SimpleJob(RuntimeMoniker.NativeAot10_0)]
 public class Benchmarks
 {
     private VesselStorage? _storage;

@@ -133,8 +133,8 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             var deleted = await storage.DeleteAsync("delete-key", TestContext.Current.CancellationToken);
             Assert.True(deleted);
 
-            Assert.Throws<FileNotFoundException>(() =>
-                storage.GetAsync("delete-key", TestContext.Current.CancellationToken).GetAwaiter().GetResult());
+            await Assert.ThrowsAsync<FileNotFoundException>(async () =>
+                await storage.GetAsync("delete-key", TestContext.Current.CancellationToken));
         }
     }
 
@@ -281,6 +281,48 @@ public sealed class VesselStoragePersistenceTests : IDisposable
                 var blobFiles = Directory.GetFiles(blobsPath, "*", SearchOption.AllDirectories);
                 Assert.Single(blobFiles);
             }
+        }
+    }
+
+    [Theory]
+    [InlineData(CompressionType.Zstd)]
+    [InlineData(CompressionType.LZ4)]
+    public async Task PutAsync_SameContentDifferentCompressionTypes_StoresSeparateBlobsAndReadsCorrectly(CompressionType compressionType)
+    {
+        const string content = "Shared content for compression collision testing";
+        ObjectMetadata? uncompressedMetadata = null;
+
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
+        {
+            await using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(content)))
+            {
+                uncompressedMetadata = await storage.PutAsync("shared-content", stream, cancellationToken: TestContext.Current.CancellationToken);
+            }
+
+            await using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(content)))
+            {
+                var compressedMetadata = await storage.PutAsync("shared-content-compressed", stream, compressionType: compressionType, cancellationToken: TestContext.Current.CancellationToken);
+                Assert.Equal(compressionType, compressedMetadata.CompressionType);
+                Assert.NotNull(uncompressedMetadata);
+                Assert.NotEqual(uncompressedMetadata.Value.Hash, compressedMetadata.Hash);
+            }
+        }
+
+        using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
+        {
+            var uncompressedResponse = await storage.GetAsync("shared-content", TestContext.Current.CancellationToken);
+            var compressedResponse = await storage.GetAsync("shared-content-compressed", TestContext.Current.CancellationToken);
+
+            using var uncompressedReader = new StreamReader(uncompressedResponse.ContentStream);
+            using var compressedReader = new StreamReader(compressedResponse.ContentStream);
+
+            var uncompressedText = await uncompressedReader.ReadToEndAsync(TestContext.Current.CancellationToken);
+            var compressedText = await compressedReader.ReadToEndAsync(TestContext.Current.CancellationToken);
+
+            Assert.Equal(content, uncompressedText);
+            Assert.Equal(content, compressedText);
+            Assert.Equal(CompressionType.None, uncompressedResponse.Metadata.CompressionType);
+            Assert.Equal(compressionType, compressedResponse.Metadata.CompressionType);
         }
     }
 

@@ -18,10 +18,4 @@
 	<ItemGroup>
 		<ProjectReference Include="..\..\Sources\Vessel.Core\Vessel.Core.csproj" />
 	</ItemGroup>
-
-	<ItemGroup>
-	  <None Update="sample.json">
-	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	  </None>
-	</ItemGroup>
 </Project>

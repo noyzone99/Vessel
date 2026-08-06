@@ -21,12 +21,12 @@ namespace Vessel;
 /// <exception cref="ArgumentException">
 /// Thrown when <paramref name="storageBasePath"/> is <see langword="null"/>, empty, or whitespace.
 /// </exception>
-public sealed class VesselStorage(string storageBasePath, VesselStorageOptions options = default!) : IVesselStorage
+public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? options = null) : IVesselStorage
 {
-    private readonly IVesselLogger? _logger = options.Logger;
-    private readonly LocalBlobStorageEngine _blobStorageEngine = new(storageBasePath, options.Logger);
-    private readonly MetadataRepository _metadataRepository = new(storageBasePath, options.EnableMetadataCompression, options.Logger);
-    private readonly SemaphoreSlim[] _keyLocks = [.. Enumerable.Range(0, 32).Select(_ => new SemaphoreSlim(1, 1))];
+    private readonly IVesselLogger? _logger = options?.Logger;
+    private readonly LocalBlobStorageEngine _blobStorageEngine = new(storageBasePath, options?.Logger);
+    private readonly MetadataRepository _metadataRepository = new(storageBasePath, options?.EnableMetadataCompression ?? false, options?.Logger);
+    private readonly SemaphoreSlim[] _keyLocks = [.. Enumerable.Range(0, 1024).Select(_ => new SemaphoreSlim(1, 1))];
 
     /// <inheritdoc/>
     public async Task<ObjectMetadata> PutAsync(string key, Stream contentStream, bool overwrite = false, ObjectInfo fileInfo = default, CompressionType compressionType = CompressionType.None, CompressionLevel compressionLevel = CompressionLevel.Balanced, CancellationToken cancellationToken = default)

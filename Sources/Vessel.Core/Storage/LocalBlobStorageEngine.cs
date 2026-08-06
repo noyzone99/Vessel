@@ -57,7 +57,6 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
     {
         int originalSize = (int)inputStream.Length;
         byte[] sourceBuffer = ArrayPool<byte>.Shared.Rent(originalSize);
-        byte[]? compressedBuffer = null;
 
         try
         {
@@ -71,10 +70,11 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
                 hash = ToLowerHexString(hashBytes);
             }
 
-            var destinationPath = GetBlobPath(hash);
+            var blobIdentifier = GetBlobIdentifier(hash, compressionType);
+            var destinationPath = GetBlobPath(blobIdentifier);
             if (File.Exists(destinationPath))
             {
-                return new BlobInfo(hash, originalSize, new FileInfo(destinationPath).Length);
+                return new BlobInfo(blobIdentifier, originalSize, new FileInfo(destinationPath).Length);
             }
 
             ReadOnlyMemory<byte> dataToWrite;
@@ -85,9 +85,8 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
             }
             else
             {
-                compressedBuffer = ArrayPool<byte>.Shared.Rent(originalSize + 1024);
-                int compressedSize = CompressBuffer(sourceMemory.Span, compressedBuffer, compressionType, compressionLevel);
-                dataToWrite = compressedBuffer.AsMemory(0, compressedSize);
+                var compressedBuffer = await CompressBufferAsync(sourceMemory, compressionType, compressionLevel).ConfigureAwait(false);
+                dataToWrite = compressedBuffer;
             }
 
             var tempFilePath = GetTempFilePath();
@@ -104,15 +103,11 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
             catch (IOException) when (File.Exists(destinationPath)) { }
             finally { TryDeleteFile(tempFilePath); }
 
-            return new BlobInfo(hash, originalSize, dataToWrite.Length);
+            return new BlobInfo(blobIdentifier, originalSize, dataToWrite.Length);
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(sourceBuffer);
-            if (compressedBuffer != null)
-            {
-                ArrayPool<byte>.Shared.Return(compressedBuffer);
-            }
         }
     }
 
@@ -155,12 +150,13 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
             Span<byte> hashBytes = stackalloc byte[32];
             hasher.GetHashAndReset(hashBytes);
             string hash = ToLowerHexString(hashBytes);
+            var blobIdentifier = GetBlobIdentifier(hash, compressionType);
 
-            var destinationPath = GetBlobPath(hash);
+            var destinationPath = GetBlobPath(blobIdentifier);
             if (File.Exists(destinationPath))
             {
                 TryDeleteFile(tempFilePath);
-                return new BlobInfo(hash, originalSize, new FileInfo(destinationPath).Length);
+                return new BlobInfo(blobIdentifier, originalSize, new FileInfo(destinationPath).Length);
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
@@ -173,7 +169,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
                 TryDeleteFile(tempFilePath);
             }
 
-            return new BlobInfo(hash, originalSize, compressedSize);
+            return new BlobInfo(blobIdentifier, originalSize, compressedSize);
         }
         finally
         {
@@ -235,6 +231,16 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
         return Path.Join(_blobsPath, hash.AsSpan(0, 2), hash.AsSpan(2, 2), $"{hash}.blob");
     }
 
+    private static string GetBlobIdentifier(string contentHash, CompressionType compressionType)
+    {
+        if (compressionType == CompressionType.None)
+        {
+            return contentHash;
+        }
+
+        return $"{contentHash}-{compressionType}";
+    }
+
     /// <summary>
     /// Wraps a base stream with the appropriate compression stream for the requested codec and level.
     /// </summary>
@@ -279,21 +285,16 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
         _ => K4os.Compression.LZ4.LZ4Level.L00_FAST
     };
 
-    private static int CompressBuffer(ReadOnlySpan<byte> source, byte[] destination, CompressionType type, CompressionLevel level)
+    private static async Task<byte[]> CompressBufferAsync(ReadOnlyMemory<byte> source, CompressionType type, CompressionLevel level)
     {
-        if (type == CompressionType.Zstd)
+        await using var compressedStream = new MemoryStream();
+        await using (var targetStream = WrapStream(compressedStream, type, level))
         {
-            using var compressor = new Compressor(GetZstdLevel(level));
-            return compressor.Wrap(source, destination);
+            await targetStream.WriteAsync(source, CancellationToken.None).ConfigureAwait(false);
+            await targetStream.FlushAsync(CancellationToken.None).ConfigureAwait(false);
         }
 
-        if (type == CompressionType.LZ4)
-        {
-            var lz4Level = GetLZ4Level(level);
-            return LZ4Codec.Encode(source, destination, lz4Level);
-        }
-
-        return 0;
+        return compressedStream.ToArray();
     }
 
     private string GetTempFilePath()
