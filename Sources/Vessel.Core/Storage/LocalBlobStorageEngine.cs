@@ -1,7 +1,9 @@
+using K4os.Compression.LZ4;
 using K4os.Compression.LZ4.Streams;
 using System.Buffers;
 using System.Security.Cryptography;
 using Vessel.Logging;
+using Vessel.Models;
 using ZstdSharp;
 
 namespace Vessel.Storage;
@@ -21,7 +23,9 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
     /// </summary>
     /// <param name="storageBasePath">The root directory used to host the blob and temporary-file folders.</param>
     /// <param name="logger">An optional logger used to record blob storage diagnostics.</param>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="storageBasePath"/> is null, empty, or whitespace.</exception>
+    /// <exception cref="ArgumentException">
+    /// Thrown when <paramref name="storageBasePath"/> is null, empty, or whitespace.
+    /// </exception>
     public LocalBlobStorageEngine(string storageBasePath, IVesselLogger? logger = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(storageBasePath);
@@ -37,28 +41,92 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
     }
 
     /// <inheritdoc/>
-    public async Task<(string Hash, long Size, long CompressedSize)> WriteBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
+    public async Task<BlobInfo> WriteBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(inputStream);
 
-        Span<char> guidChars = stackalloc char[32];
-        Guid.NewGuid().TryFormat(guidChars, out _, "N");
+        if (inputStream.CanSeek && inputStream.Length <= BufferSize)
+        {
+            return await WriteSmallBlobAsync(inputStream, compressionType, compressionLevel, cancellationToken).ConfigureAwait(false);
+        }
 
-        Span<char> tempFileName = stackalloc char[36];
-        guidChars.CopyTo(tempFileName);
-        ".tmp".AsSpan().CopyTo(tempFileName[32..]);
+        return await WriteLargeBlobAsync(inputStream, compressionType, compressionLevel, cancellationToken).ConfigureAwait(false);
+    }
 
-        var tempFilePath = Path.Join(_tmpPath, tempFileName);
-        using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-        long originalSize = 0;
-        long compressedSize = 0;
+    private async Task<BlobInfo> WriteSmallBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
+    {
+        int originalSize = (int)inputStream.Length;
+        byte[] sourceBuffer = ArrayPool<byte>.Shared.Rent(originalSize);
+        byte[]? compressedBuffer = null;
 
         try
         {
-            await using (var fileDestination = new FileStream(
-                tempFilePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None,
-                BufferSize, FileOptions.Asynchronous))
+            Memory<byte> sourceMemory = sourceBuffer.AsMemory(0, originalSize);
+            await inputStream.ReadExactlyAsync(sourceMemory, cancellationToken).ConfigureAwait(false);
+
+            string hash;
+            {
+                Span<byte> hashBytes = stackalloc byte[32];
+                SHA256.HashData(sourceMemory.Span, hashBytes);
+                hash = ToLowerHexString(hashBytes);
+            }
+
+            var destinationPath = GetBlobPath(hash);
+            if (File.Exists(destinationPath))
+            {
+                return new BlobInfo(hash, originalSize, new FileInfo(destinationPath).Length);
+            }
+
+            ReadOnlyMemory<byte> dataToWrite;
+
+            if (compressionType == CompressionType.None)
+            {
+                dataToWrite = sourceMemory;
+            }
+            else
+            {
+                compressedBuffer = ArrayPool<byte>.Shared.Rent(originalSize + 1024);
+                int compressedSize = CompressBuffer(sourceMemory.Span, compressedBuffer, compressionType, compressionLevel);
+                dataToWrite = compressedBuffer.AsMemory(0, compressedSize);
+            }
+
+            var tempFilePath = GetTempFilePath();
+            try
+            {
+                await using (var fs = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, BufferSize, FileOptions.Asynchronous))
+                {
+                    await fs.WriteAsync(dataToWrite, cancellationToken).ConfigureAwait(false);
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+                File.Move(tempFilePath, destinationPath, overwrite: false);
+            }
+            catch (IOException) when (File.Exists(destinationPath)) { }
+            finally { TryDeleteFile(tempFilePath); }
+
+            return new BlobInfo(hash, originalSize, dataToWrite.Length);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(sourceBuffer);
+            if (compressedBuffer != null)
+            {
+                ArrayPool<byte>.Shared.Return(compressedBuffer);
+            }
+        }
+    }
+
+    private async Task<BlobInfo> WriteLargeBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
+    {
+        var tempFilePath = GetTempFilePath();
+        using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+        long originalSize = 0;
+        long compressedSize;
+
+        try
+        {
+            await using (var fileDestination = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, BufferSize, FileOptions.Asynchronous))
             {
                 Stream targetStream = WrapStream(fileDestination, compressionType, compressionLevel);
                 try
@@ -89,31 +157,28 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
             string hash = ToLowerHexString(hashBytes);
 
             var destinationPath = GetBlobPath(hash);
-
-            var dir = Path.GetDirectoryName(destinationPath)!;
-            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-
             if (File.Exists(destinationPath))
             {
                 TryDeleteFile(tempFilePath);
-            }
-            else
-            {
-                try { File.Move(tempFilePath, destinationPath, overwrite: false); }
-                catch (IOException) { TryDeleteFile(tempFilePath); }
+                return new BlobInfo(hash, originalSize, new FileInfo(destinationPath).Length);
             }
 
-            return (hash, originalSize, compressedSize);
-        }
-        catch (Exception ex)
-        {
-            _logger?.Log(VesselLogLevel.Error, $"Failed to write blob: {ex.Message}");
-            TryDeleteFile(tempFilePath);
-            throw;
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+            try
+            {
+                File.Move(tempFilePath, destinationPath, overwrite: false);
+            }
+            catch (IOException) when (File.Exists(destinationPath))
+            {
+                TryDeleteFile(tempFilePath);
+            }
+
+            return new BlobInfo(hash, originalSize, compressedSize);
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(buffer);
+            TryDeleteFile(tempFilePath);
         }
     }
 
@@ -206,13 +271,37 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine
     /// </summary>
     /// <param name="level">The requested compression level.</param>
     /// <returns>The corresponding LZ4 compression level.</returns>
-    private static K4os.Compression.LZ4.LZ4Level GetLZ4Level(CompressionLevel level) => level switch
+    private static LZ4Level GetLZ4Level(CompressionLevel level) => level switch
     {
         CompressionLevel.Fastest => K4os.Compression.LZ4.LZ4Level.L00_FAST,
         CompressionLevel.High => K4os.Compression.LZ4.LZ4Level.L04_HC,
         CompressionLevel.Ultra => K4os.Compression.LZ4.LZ4Level.L09_HC,
         _ => K4os.Compression.LZ4.LZ4Level.L00_FAST
     };
+
+    private static int CompressBuffer(ReadOnlySpan<byte> source, byte[] destination, CompressionType type, CompressionLevel level)
+    {
+        if (type == CompressionType.Zstd)
+        {
+            using var compressor = new Compressor(GetZstdLevel(level));
+            return compressor.Wrap(source, destination);
+        }
+
+        if (type == CompressionType.LZ4)
+        {
+            var lz4Level = GetLZ4Level(level);
+            return LZ4Codec.Encode(source, destination, lz4Level);
+        }
+
+        return 0;
+    }
+
+    private string GetTempFilePath()
+    {
+        Span<char> guidChars = stackalloc char[32];
+        Guid.NewGuid().TryFormat(guidChars, out _, "N");
+        return Path.Join(_tmpPath, $"{guidChars}.tmp");
+    }
 
     /// <summary>
     /// Formats the supplied bytes as a lowercase hexadecimal string suitable for blob identifiers.

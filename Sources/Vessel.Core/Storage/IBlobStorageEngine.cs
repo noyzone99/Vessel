@@ -1,4 +1,4 @@
-﻿using Vessel;
+﻿using Vessel.Models;
 
 namespace Vessel.Storage;
 
@@ -16,7 +16,7 @@ internal interface IBlobStorageEngine
     /// <param name="cancellationToken">A token that can cancel the operation.</param>
     /// <returns>A tuple containing the generated hash, the uncompressed size, and the compressed blob size.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="inputStream"/> is <see langword="null"/>.</exception>
-    Task<(string Hash, long Size, long CompressedSize)> WriteBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken);
+    Task<BlobInfo> WriteBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken);
 
     /// <summary>
     /// Opens the blob identified by the supplied hash for reading.
