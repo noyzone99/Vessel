@@ -2,7 +2,6 @@ using Moq;
 using System.Collections.Concurrent;
 using System.Text;
 using Vessel.Logging;
-using Vessel.Models;
 
 namespace Vessel.Core.UnitTests;
 
@@ -40,7 +39,7 @@ public sealed class VesselStorageTests : IDisposable
 
         Assert.Equal(key, result.Key);
         Assert.NotNull(result.Hash);
-        Assert.True(result.Size > 0);
+        Assert.True(result.OriginalSize > 0);
     }
 
     [Fact]
@@ -105,7 +104,7 @@ public sealed class VesselStorageTests : IDisposable
 
         Assert.Equal(key, updated.Key);
         Assert.NotEqual(original.Hash, updated.Hash);
-        Assert.NotEqual(original.Size, updated.Size);
+        Assert.NotEqual(original.OriginalSize, updated.OriginalSize);
     }
 
     [Fact]
@@ -138,7 +137,7 @@ public sealed class VesselStorageTests : IDisposable
         const string extension = ".json";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{}"));
 
-        var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileExtension: extension), cancellationToken: TestContext.Current.CancellationToken);
+        var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(Extension: extension), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(extension, result.Extension);
     }
@@ -150,7 +149,7 @@ public sealed class VesselStorageTests : IDisposable
         const string extension = "txt";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
 
-        var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileExtension: extension), cancellationToken: TestContext.Current.CancellationToken);
+        var result = await _storage.PutAsync(key, stream, fileInfo: new ObjectInfo(Extension: extension), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(extension, result.Extension);
     }
@@ -188,7 +187,7 @@ public sealed class VesselStorageTests : IDisposable
         var result = await _storage.PutAsync(key, stream, compressionType: CompressionType.LZ4, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(CompressionType.LZ4, result.CompressionType);
-        Assert.True(result.CompressedSize < result.Size);
+        Assert.True(result.CompressedSize < result.OriginalSize);
     }
 
     [Fact]
@@ -242,10 +241,9 @@ public sealed class VesselStorageTests : IDisposable
         var response = _storage.GetStream(key);
 
         Assert.NotNull(response);
-        Assert.Equal(key, response.Metadata.Key);
-        Assert.NotNull(response.ContentStream);
+        Assert.NotNull(response);
 
-        using var reader = new StreamReader(response.ContentStream);
+        using var reader = new StreamReader(response);
         var retrievedContent = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
         Assert.Equal(content, retrievedContent);
     }
@@ -289,7 +287,7 @@ public sealed class VesselStorageTests : IDisposable
 
         var response = _storage.GetStream(key);
 
-        using var reader = new StreamReader(response.ContentStream);
+        using var reader = new StreamReader(response);
         var retrievedContent = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
         Assert.Equal(content, retrievedContent);
     }
@@ -311,7 +309,7 @@ public sealed class VesselStorageTests : IDisposable
         Assert.Equal(10, responses.Length);
         foreach (var response in responses)
         {
-            using var reader = new StreamReader(response.ContentStream);
+            using var reader = new StreamReader(response);
             var retrievedContent = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
             Assert.Equal(content, retrievedContent);
         }
@@ -381,7 +379,7 @@ public sealed class VesselStorageTests : IDisposable
         Assert.True(deleted);
 
         var response = _storage.GetStream(key2);
-        using var reader = new StreamReader(response.ContentStream);
+        using var reader = new StreamReader(response);
         var retrievedContent = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
         Assert.Equal(content, retrievedContent);
     }

@@ -1,7 +1,6 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Microsoft.VSDiagnostics;
-using Vessel.Models;
 
 namespace Vessel.Benchmark;
 
@@ -70,6 +69,6 @@ public class Benchmarks
     {
         var key = $"init-{Random.Shared.Next(0, 100)}";
         using var response = _storage!.GetStream(key);
-        response.ContentStream.CopyTo(Stream.Null);
+        response.CopyTo(Stream.Null);
     }
 }

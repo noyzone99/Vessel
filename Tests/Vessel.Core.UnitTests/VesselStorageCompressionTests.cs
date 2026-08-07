@@ -1,7 +1,6 @@
 using Moq;
 using System.Text;
 using Vessel.Logging;
-using Vessel.Models;
 
 namespace Vessel.Core.UnitTests;
 
@@ -48,11 +47,10 @@ public sealed class VesselStorageCompressionTests : IDisposable
 
         Assert.Equal(key, metadata.Key);
         Assert.NotNull(metadata.Hash);
-        Assert.True(metadata.Size > 0);
+        Assert.True(metadata.OriginalSize > 0);
 
         var response = storage.GetStream(key);
-        Assert.Equal(key, response.Metadata.Key);
-        Assert.Equal(metadata.Hash, response.Metadata.Hash);
+        Assert.Equal(metadata.Hash, response.Checksum);
     }
 
     [Fact]
@@ -108,7 +106,7 @@ public sealed class VesselStorageCompressionTests : IDisposable
         var updated = await storage.PutAsync(key, stream2, overwrite: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotEqual(original.Hash, updated.Hash);
-        Assert.NotEqual(original.Size, updated.Size);
+        Assert.NotEqual(original.OriginalSize, updated.OriginalSize);
     }
 
     [Fact]
@@ -119,7 +117,7 @@ public sealed class VesselStorageCompressionTests : IDisposable
 
         const string key = "metadata-key";
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test content"));
-        var stored = await storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileName: "test.txt", FileExtension: ".txt", MimeType: "text/plain"), cancellationToken: TestContext.Current.CancellationToken);
+        var stored = await storage.PutAsync(key, stream, fileInfo: new ObjectInfo(FileName: "test.txt", Extension: ".txt", MimeType: "text/plain"), cancellationToken: TestContext.Current.CancellationToken);
 
         var metadata = storage.GetMetadata(key);
 
@@ -177,8 +175,8 @@ public sealed class VesselStorageCompressionTests : IDisposable
         Assert.Equal(CompressionType.Zstd, metadata2.CompressionType);
         Assert.Equal(CompressionType.LZ4, metadata3.CompressionType);
 
-        Assert.True(metadata2.CompressedSize < metadata2.Size);
-        Assert.True(metadata3.CompressedSize < metadata3.Size);
+        Assert.True(metadata2.CompressedSize < metadata2.OriginalSize);
+        Assert.True(metadata3.CompressedSize < metadata3.OriginalSize);
     }
 
     [Fact]

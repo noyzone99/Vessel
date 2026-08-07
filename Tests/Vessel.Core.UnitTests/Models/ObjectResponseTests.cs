@@ -1,6 +1,4 @@
-﻿using Vessel.Models;
-
-namespace Vessel.Core.UnitTests.Models;
+﻿namespace Vessel.Core.UnitTests.Models;
 
 public class ObjectResponseTests
 {
@@ -9,7 +7,7 @@ public class ObjectResponseTests
     {
         var stream = new MemoryStream();
         var metadata = CreateObjectMetadata();
-        var response = new ObjectResponse(metadata, stream);
+        var response = new VesselStream(stream, metadata.Hash, metadata.OriginalSize, new ObjectInfo(metadata.FileName, metadata.Extension, metadata.MimeType));
 
         response.Dispose();
 
@@ -21,7 +19,7 @@ public class ObjectResponseTests
     {
         var stream = new MemoryStream();
         var metadata = CreateObjectMetadata();
-        var response = new ObjectResponse(metadata, stream);
+        var response = new VesselStream(stream, metadata.Hash, metadata.OriginalSize, new ObjectInfo(metadata.FileName, metadata.Extension, metadata.MimeType));
 
         response.Dispose();
         var exception = Record.Exception(() => response.Dispose());
@@ -34,7 +32,7 @@ public class ObjectResponseTests
     {
         var stream = new MemoryStream();
         var metadata = CreateObjectMetadata();
-        var response = new ObjectResponse(metadata, stream);
+        var response = new VesselStream(stream, metadata.Hash, metadata.OriginalSize, new ObjectInfo(metadata.FileName, metadata.Extension, metadata.MimeType));
         var tasks = new Task[10];
 
         for (int i = 0; i < tasks.Length; i++)
@@ -51,7 +49,7 @@ public class ObjectResponseTests
     {
         var stream = new MemoryStream();
         var metadata = CreateObjectMetadata();
-        var response = new ObjectResponse(metadata, stream);
+        var response = new VesselStream(stream, metadata.Hash, metadata.OriginalSize, new ObjectInfo(metadata.FileName, metadata.Extension, metadata.MimeType));
 
         await response.DisposeAsync();
 
@@ -63,7 +61,7 @@ public class ObjectResponseTests
     {
         var stream = new MemoryStream();
         var metadata = CreateObjectMetadata();
-        var response = new ObjectResponse(metadata, stream);
+        var response = new VesselStream(stream, metadata.Hash, metadata.OriginalSize, new ObjectInfo(metadata.FileName, metadata.Extension, metadata.MimeType));
 
         await response.DisposeAsync();
         var exception = await Record.ExceptionAsync(async () => await response.DisposeAsync());
@@ -76,7 +74,7 @@ public class ObjectResponseTests
     {
         var stream = new MemoryStream();
         var metadata = CreateObjectMetadata();
-        var response = new ObjectResponse(metadata, stream);
+        var response = new VesselStream(stream, metadata.Hash, metadata.OriginalSize, new ObjectInfo(metadata.FileName, metadata.Extension, metadata.MimeType));
         var tasks = new Task[10];
 
         for (int i = 0; i < tasks.Length; i++)
@@ -94,7 +92,7 @@ public class ObjectResponseTests
         var data = new byte[] { 1, 2, 3, 4, 5 };
         var stream = new MemoryStream(data);
         var metadata = CreateObjectMetadata();
-        var response = new ObjectResponse(metadata, stream);
+        var response = new VesselStream(stream, metadata.Hash, metadata.OriginalSize, new ObjectInfo(metadata.FileName, metadata.Extension, metadata.MimeType));
 
         await response.DisposeAsync();
 
@@ -107,7 +105,7 @@ public class ObjectResponseTests
         var data = new byte[] { 1, 2, 3, 4, 5 };
         var stream = new MemoryStream(data);
         var metadata = CreateObjectMetadata();
-        var response = new ObjectResponse(metadata, stream);
+        var response = new VesselStream(stream, metadata.Hash, metadata.OriginalSize, new ObjectInfo(metadata.FileName, metadata.Extension, metadata.MimeType));
 
         response.Dispose();
 
@@ -119,7 +117,7 @@ public class ObjectResponseTests
     {
         var stream = new NonSeekableMemoryStream();
         var metadata = CreateObjectMetadata();
-        var response = new ObjectResponse(metadata, stream);
+        var response = new VesselStream(stream, metadata.Hash, metadata.OriginalSize, new ObjectInfo(metadata.FileName, metadata.Extension, metadata.MimeType));
 
         response.Dispose();
 
@@ -131,7 +129,7 @@ public class ObjectResponseTests
     {
         var stream = new NonSeekableMemoryStream();
         var metadata = CreateObjectMetadata();
-        var response = new ObjectResponse(metadata, stream);
+        var response = new VesselStream(stream, metadata.Hash, metadata.OriginalSize, new ObjectInfo(metadata.FileName, metadata.Extension, metadata.MimeType));
 
         await response.DisposeAsync();
 
@@ -143,7 +141,7 @@ public class ObjectResponseTests
     {
         var stream = new MemoryStream();
         var metadata = CreateObjectMetadata();
-        var response = new ObjectResponse(metadata, stream);
+        var response = new VesselStream(stream, metadata.Hash, metadata.OriginalSize, new ObjectInfo(metadata.FileName, metadata.Extension, metadata.MimeType));
 
         await response.DisposeAsync();
         var exception = Record.Exception(() => response.Dispose());
@@ -156,7 +154,7 @@ public class ObjectResponseTests
     {
         var stream = new MemoryStream();
         var metadata = CreateObjectMetadata();
-        var response = new ObjectResponse(metadata, stream);
+        var response = new VesselStream(stream, metadata.Hash, metadata.OriginalSize, new ObjectInfo(metadata.FileName, metadata.Extension, metadata.MimeType));
 
         response.Dispose();
         var exception = await Record.ExceptionAsync(async () => await response.DisposeAsync());
@@ -182,10 +180,10 @@ public class ObjectResponseTests
         return new ObjectMetadata(
             Key: "test-key",
             Hash: "test-hash",
-            Size: 1024L,
+            OriginalSize: 1024L,
             CompressionType: CompressionType.None,
             ETag: "test-etag",
-            LastModified: DateTimeOffset.UtcNow,
+            CreationDate: DateTimeOffset.UtcNow,
             FileName: "test.txt",
             Extension: ".txt",
             MimeType: "text/plain",

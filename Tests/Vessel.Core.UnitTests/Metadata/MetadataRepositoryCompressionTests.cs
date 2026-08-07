@@ -1,7 +1,6 @@
 using Moq;
 using Vessel.Logging;
 using Vessel.Metadata;
-using Vessel.Models;
 
 namespace Vessel.Core.UnitTests.Metadata;
 
@@ -164,10 +163,10 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
         var metadata = new ObjectMetadata(
             Key: "large-metadata-key",
             Hash: "large-hash",
-            Size: 10_000_000,
+            OriginalSize: 10_000_000,
             CompressionType: CompressionType.None,
             ETag: "large-etag",
-            LastModified: DateTimeOffset.UtcNow,
+            CreationDate: DateTimeOffset.UtcNow,
             FileName: largeFileName,
             Extension: ".bin",
             MimeType: "application/octet-stream",
@@ -179,7 +178,7 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
 
         Assert.NotNull(result);
         Assert.Equal(largeFileName, result.Value.FileName);
-        Assert.Equal(10_000_000, result.Value.Size);
+        Assert.Equal(10_000_000, result.Value.OriginalSize);
     }
 
     private static ObjectMetadata CreateTestMetadata(string key, string hash, long size = 1000)
@@ -187,10 +186,10 @@ public sealed class MetadataRepositoryCompressionTests : IDisposable
         return new ObjectMetadata(
             Key: key,
             Hash: hash,
-            Size: size,
+            OriginalSize: size,
             CompressionType: CompressionType.None,
             ETag: $"etag-{key}",
-            LastModified: DateTimeOffset.UtcNow,
+            CreationDate: DateTimeOffset.UtcNow,
             FileName: $"{key}.txt",
             Extension: ".txt",
             MimeType: "text/plain",

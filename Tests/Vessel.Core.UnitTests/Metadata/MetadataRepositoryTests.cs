@@ -1,7 +1,6 @@
 using Moq;
 using Vessel.Logging;
 using Vessel.Metadata;
-using Vessel.Models;
 
 namespace Vessel.Core.UnitTests.Metadata;
 
@@ -188,7 +187,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         Assert.NotNull(result);
         Assert.Equal("update-key", result.Value.Key);
         Assert.Equal("updated-hash", result.Value.Hash);
-        Assert.Equal(200, result.Value.Size);
+        Assert.Equal(200, result.Value.OriginalSize);
     }
 
     [Fact]
@@ -463,10 +462,10 @@ public sealed class MetadataRepositoryTests : IDisposable
         return new ObjectMetadata(
             Key: key,
             Hash: hash,
-            Size: size,
+            OriginalSize: size,
             CompressionType: CompressionType.None,
             ETag: $"etag-{key}",
-            LastModified: DateTimeOffset.UtcNow,
+            CreationDate: DateTimeOffset.UtcNow,
             FileName: $"{key}.txt",
             Extension: ".txt",
             MimeType: "text/plain",

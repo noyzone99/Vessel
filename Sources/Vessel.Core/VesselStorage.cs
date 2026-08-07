@@ -94,7 +94,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
             _logger?.Log(VesselLogLevel.Debug, $"Opening blob '{objectMetadata.Hash}' for object '{key}'.");
             var contentStream = _blobStorageEngine.OpenBlobRead(objectMetadata.Hash, objectMetadata.CompressionType);
             var objectInfo = new ObjectInfo(objectMetadata.FileName, objectMetadata.Extension, objectMetadata.MimeType);
-            return new VesselStream(contentStream, objectMetadata.Hash, objectMetadata.OriginalSize, false, objectInfo);
+            return new VesselStream(contentStream, objectMetadata.Hash, objectMetadata.OriginalSize, objectInfo, false);
         }
     }
 

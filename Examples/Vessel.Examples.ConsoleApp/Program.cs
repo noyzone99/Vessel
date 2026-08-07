@@ -1,6 +1,5 @@
 ﻿using System.Text;
 using Vessel;
-using Vessel.Models;
 
 Console.WriteLine("Esempio di utilizzo realistico di VesselStorage\n");
 
@@ -60,12 +59,11 @@ Console.WriteLine("\nLettura dei file e dei metadati:");
 foreach (var metadata in uploadedMetadata)
 {
     await using var response = storage.GetStream(metadata.Key);
-    using var reader = new StreamReader(response.ContentStream, Encoding.UTF8, leaveOpen: false);
+    using var reader = new StreamReader(response, Encoding.UTF8, leaveOpen: false);
     var content = await reader.ReadToEndAsync();
 
     Console.WriteLine($"\nKey: {metadata.Key}");
-    Console.WriteLine($"FileName: {response.Metadata.FileName}");
-    Console.WriteLine($"Compression: {response.Metadata.CompressionType}");
+    Console.WriteLine($"FileName: {response.FileName}");
     Console.WriteLine($"Content: {content}");
 }
 

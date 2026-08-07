@@ -1,7 +1,6 @@
 using Moq;
 using System.Text;
 using Vessel.Logging;
-using Vessel.Models;
 
 namespace Vessel.Core.UnitTests;
 
@@ -50,11 +49,8 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             var response1 = storage.GetStream("key1");
             var response2 = storage.GetStream("key2");
 
-            Assert.Equal("key1", response1.Metadata.Key);
-            Assert.Equal("key2", response2.Metadata.Key);
-
-            using var reader1 = new StreamReader(response1.ContentStream);
-            using var reader2 = new StreamReader(response2.ContentStream);
+            using var reader1 = new StreamReader(response1);
+            using var reader2 = new StreamReader(response2);
             Assert.Equal("Content 1", await reader1.ReadToEndAsync(TestContext.Current.CancellationToken));
             Assert.Equal("Content 2", await reader2.ReadToEndAsync(TestContext.Current.CancellationToken));
         }
@@ -76,11 +72,8 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             var response1 = storage.GetStream("keyA");
             var response2 = storage.GetStream("keyB");
 
-            Assert.Equal("keyA", response1.Metadata.Key);
-            Assert.Equal("keyB", response2.Metadata.Key);
-
-            using var reader1 = new StreamReader(response1.ContentStream);
-            using var reader2 = new StreamReader(response2.ContentStream);
+            using var reader1 = new StreamReader(response1);
+            using var reader2 = new StreamReader(response2);
             Assert.Equal("Content A", await reader1.ReadToEndAsync(TestContext.Current.CancellationToken));
             Assert.Equal("Content B", await reader2.ReadToEndAsync(TestContext.Current.CancellationToken));
         }
@@ -150,7 +143,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             var updated = await storage.PutAsync("update-key", stream, overwrite: true, cancellationToken: TestContext.Current.CancellationToken);
 
             var response = storage.GetStream("update-key");
-            using var reader = new StreamReader(response.ContentStream);
+            using var reader = new StreamReader(response);
             var content = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
 
             Assert.Equal("Updated content", content);
@@ -163,7 +156,7 @@ public sealed class VesselStoragePersistenceTests : IDisposable
         using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: false, Logger: _mockLogger.Object)))
         {
             await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Test content"));
-            await storage.PutAsync("metadata-key", stream, fileInfo: new ObjectInfo(FileName: "test.txt", FileExtension: ".txt", MimeType: "text/plain"), cancellationToken: TestContext.Current.CancellationToken);
+            await storage.PutAsync("metadata-key", stream, fileInfo: new ObjectInfo(FileName: "test.txt", Extension: ".txt", MimeType: "text/plain"), cancellationToken: TestContext.Current.CancellationToken);
         }
 
         using (var storage = new VesselStorage(_tempDirectory, new VesselStorageOptions(EnableMetadataCompression: true, Logger: _mockLogger.Object)))
@@ -211,9 +204,8 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             for (int i = 0; i < objectCount; i++)
             {
                 var response = storage.GetStream($"key-{i}");
-                Assert.Equal($"key-{i}", response.Metadata.Key);
 
-                using var reader = new StreamReader(response.ContentStream);
+                using var reader = new StreamReader(response);
                 var content = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
                 Assert.Equal($"Content {i}", content);
             }
@@ -304,16 +296,14 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             var uncompressedResponse = storage.GetStream("shared-content");
             var compressedResponse = storage.GetStream("shared-content-compressed");
 
-            using var uncompressedReader = new StreamReader(uncompressedResponse.ContentStream);
-            using var compressedReader = new StreamReader(compressedResponse.ContentStream);
+            using var uncompressedReader = new StreamReader(uncompressedResponse);
+            using var compressedReader = new StreamReader(compressedResponse);
 
             var uncompressedText = await uncompressedReader.ReadToEndAsync(TestContext.Current.CancellationToken);
             var compressedText = await compressedReader.ReadToEndAsync(TestContext.Current.CancellationToken);
 
             Assert.Equal(content, uncompressedText);
             Assert.Equal(content, compressedText);
-            Assert.Equal(CompressionType.None, uncompressedResponse.Metadata.CompressionType);
-            Assert.Equal(compressionType, compressedResponse.Metadata.CompressionType);
         }
     }
 
@@ -333,8 +323,8 @@ public sealed class VesselStoragePersistenceTests : IDisposable
             var response1 = storage.GetStream("key1");
             var response2 = storage.GetStream("key2");
 
-            using var reader1 = new StreamReader(response1.ContentStream);
-            using var reader2 = new StreamReader(response2.ContentStream);
+            using var reader1 = new StreamReader(response1);
+            using var reader2 = new StreamReader(response2);
 
             var content1 = await reader1.ReadToEndAsync(TestContext.Current.CancellationToken);
             var content2 = await reader2.ReadToEndAsync(TestContext.Current.CancellationToken);

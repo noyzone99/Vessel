@@ -12,11 +12,13 @@ public sealed class VesselStream : Stream
     /// Initializes a new wrapper around the supplied stream.
     /// </summary>
     /// <param name="innerStream">The underlying stream that provides the payload bytes.</param>
-    /// <param name="hash">The checksum associated with the payload.</param>
+    /// <param name="checksum">The checksum associated with the payload.</param>
     /// <param name="length">The logical length of the payload stream.</param>
-    /// <param name="leaveOpen">When <see langword="true"/>, the wrapped stream is not disposed when this wrapper is disposed.</param>
     /// <param name="objectInfo">Optional file metadata to associate with the payload.</param>
-    internal VesselStream(Stream innerStream, string hash, long length, bool leaveOpen = false, ObjectInfo? objectInfo = null)
+    /// <param name="leaveOpen">
+    /// When <see langword="true"/>, the wrapped stream is not disposed when this wrapper is disposed.
+    /// </param>
+    internal VesselStream(Stream innerStream, string checksum, long length, ObjectInfo? objectInfo = null, bool leaveOpen = false)
     {
         _innerStream = innerStream ?? throw new ArgumentNullException(nameof(innerStream));
         _leaveOpen = leaveOpen;
@@ -24,7 +26,7 @@ public sealed class VesselStream : Stream
         FileName = objectInfo?.FileName;
         Extension = objectInfo?.Extension;
         MimeType = objectInfo?.MimeType;
-        Checksum = hash;
+        Checksum = checksum;
     }
 
     /// <summary>
