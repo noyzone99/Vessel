@@ -1,6 +1,4 @@
-﻿using Vessel.Models;
-
-namespace Vessel.Metadata;
+﻿namespace Vessel.Metadata;
 
 /// <summary>
 /// Defines the contract for persisting and querying object metadata entries in a backing store.

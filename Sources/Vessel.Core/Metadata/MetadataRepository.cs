@@ -1,5 +1,4 @@
 ﻿using Vessel.Logging;
-using Vessel.Models;
 using ZoneTree;
 using ZoneTree.Options;
 

@@ -1,14 +1,14 @@
-﻿namespace Vessel.Models;
+﻿namespace Vessel;
 
 /// <summary>
 /// Describes a stored object identified by its logical key, blob identity, size, entity tag, and optional file attributes.
 /// </summary>
 /// <param name="Key">The logical key used by the caller.</param>
 /// <param name="Hash">The SHA-256 hash that identifies the physical blob.</param>
-/// <param name="Size">The size of the stored object in bytes.</param>
+/// <param name="OriginalSize">The size of the stored object in bytes.</param>
 /// <param name="CompressionType">The compression algorithm applied to the stored blob.</param>
 /// <param name="ETag">The entity tag derived from the blob hash.</param>
-/// <param name="LastModified">The UTC timestamp of the last metadata update.</param>
+/// <param name="CreationDate">The UTC timestamp of the last metadata update.</param>
 /// <param name="FileName">The original file name supplied by the caller, when available.</param>
 /// <param name="Extension">The file extension derived from the original name, when available.</param>
 /// <param name="MimeType">The MIME type provided for the upload, when available.</param>
@@ -16,10 +16,10 @@
 public readonly record struct ObjectMetadata(
     string Key,
     string Hash,
-    long Size,
+    long OriginalSize,
     CompressionType CompressionType,
     string ETag,
-    DateTimeOffset LastModified,
+    DateTimeOffset CreationDate,
     string? FileName = null,
     string? Extension = null,
     string? MimeType = null,

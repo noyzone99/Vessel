@@ -1,4 +1,4 @@
-namespace Vessel.Models;
+namespace Vessel.Storage;
 
 /// <summary>
 /// Represents the storage identity and size information for a persisted blob payload.

@@ -1,6 +1,4 @@
-﻿using Vessel.Models;
-
-namespace Vessel.Storage;
+﻿namespace Vessel.Storage;
 
 /// <summary>
 /// Defines the contract for persisting and reading object payload blobs in the backing storage engine.

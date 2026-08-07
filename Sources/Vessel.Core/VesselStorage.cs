@@ -1,6 +1,5 @@
 using Vessel.Logging;
 using Vessel.Metadata;
-using Vessel.Models;
 using Vessel.Storage;
 
 namespace Vessel;
@@ -49,8 +48,8 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
                 throw new InvalidOperationException($"Object '{key}' already exists.");
             }
 
-            var (hash, size, compressedSize) = await _blobStorageEngine.WriteBlobAsync(contentStream, compressionType, compressionLevel, cancellationToken).ConfigureAwait(false);
-            var metadata = new ObjectMetadata(key, hash, size, compressionType, hash, DateTimeOffset.UtcNow, fileInfo.FileName, fileInfo.FileExtension, fileInfo.MimeType, compressedSize);
+            var (hash, originalSize, compressedSize) = await _blobStorageEngine.WriteBlobAsync(contentStream, compressionType, compressionLevel, cancellationToken).ConfigureAwait(false);
+            var metadata = new ObjectMetadata(key, hash, originalSize, compressionType, hash, DateTimeOffset.UtcNow, fileInfo.FileName, fileInfo.Extension, fileInfo.MimeType, compressedSize);
 
             _metadataRepository.Upsert(metadata);
 
@@ -64,7 +63,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
                 }
             }
 
-            _logger?.Log(VesselLogLevel.Information, $"Stored object '{key}' with hash '{hash}' and size={size} bytes.");
+            _logger?.Log(VesselLogLevel.Information, $"Stored object '{key}' with hash '{hash}' and length={originalSize} bytes.");
             return metadata;
         }
         catch (Exception exception)
@@ -79,7 +78,7 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
     }
 
     /// <inheritdoc/>
-    public ObjectResponse GetStream(string key)
+    public VesselStream GetStream(string key)
     {
         {
             ThrowIfDisposed();
@@ -94,7 +93,8 @@ public sealed class VesselStorage(string storageBasePath, VesselStorageOptions? 
             var objectMetadata = metadata.Value;
             _logger?.Log(VesselLogLevel.Debug, $"Opening blob '{objectMetadata.Hash}' for object '{key}'.");
             var contentStream = _blobStorageEngine.OpenBlobRead(objectMetadata.Hash, objectMetadata.CompressionType);
-            return new ObjectResponse(objectMetadata, contentStream);
+            var objectInfo = new ObjectInfo(objectMetadata.FileName, objectMetadata.Extension, objectMetadata.MimeType);
+            return new VesselStream(contentStream, objectMetadata.Hash, objectMetadata.OriginalSize, false, objectInfo);
         }
     }
 

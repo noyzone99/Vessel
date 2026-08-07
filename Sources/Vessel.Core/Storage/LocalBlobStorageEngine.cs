@@ -4,7 +4,6 @@ using System.Buffers;
 using System.Security.Cryptography;
 using System.Threading.Channels;
 using Vessel.Logging;
-using Vessel.Models;
 using ZstdSharp;
 
 namespace Vessel.Storage;

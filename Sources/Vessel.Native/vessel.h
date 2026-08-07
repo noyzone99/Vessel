@@ -1,89 +1,92 @@
+/**
+ * @file vessel.h
+ * @brief Vessel Storage Native API - High-performance local blob storage.
+ *
+ * This header defines the C interface for the Vessel library, compiled via .NET NativeAOT.
+ * All functions return a status code from the vessel_error_t enumeration.
+ */
+
 #ifndef VESSEL_H
 #define VESSEL_H
 
 #include <stdint.h>
 #include <stddef.h>
 
-/**
- * @brief Opaque handle representing a VesselStorage instance.
- */
-typedef void* vessel_t;
-
-/**
- * @brief Granular error codes for mapping managed exceptions to native callers.
- */
-typedef enum {
-    VESSEL_SUCCESS = 0,
-    VESSEL_ERR_UNKNOWN = -1,
-    VESSEL_ERR_INVALID_ARGUMENT = -2,
-    VESSEL_ERR_NOT_FOUND = -3,
-    VESSEL_ERR_ALREADY_EXISTS = -4,
-    VESSEL_ERR_IO = -5,
-    VESSEL_ERR_DISPOSED = -6,
-    VESSEL_ERR_INVALID_OPERATION = -7
-} vessel_error_t;
-
-/**
- * @brief Input structure for providing optional object metadata during storage.
- * Maps to the managed 'ObjectInfo' record.
- */
-typedef struct {
-    const char* file_name;      /* Optional: Original file name (nullable) */
-    const char* file_extension; /* Optional: Original file extension (nullable) */
-    const char* mime_type;      /* Optional: Content MIME type (nullable) */
-} vessel_object_info_t;
-
-/**
- * @brief Output structure containing full object metadata.
- * Maps to the managed 'ObjectMetadata' record.
- *
- * NOTE: String fields (key, hash, etc.) are allocated by the library
- * and MUST be released by calling vessel_free_metadata().
- */
-typedef struct {
-    int64_t size;               /* Original uncompressed size in bytes */
-    int64_t compressed_size;    /* Actual size stored on disk in bytes */
-    int32_t compression_type;   /* Algorithm used (0=None, 1=Zstd, 2=LZ4) */
-    int64_t last_modified_unix; /* Last modified timestamp (Unix Seconds) */
-    char* key;                  /* The logical key identifier */
-    char* hash;                 /* The content-based SHA256 hash */
-    char* etag;                 /* Entity tag for cache validation */
-    char* file_name;            /* Stored file name (nullable) */
-    char* extension;            /* Stored file extension (nullable) */
-    char* mime_type;            /* Stored MIME type (nullable) */
-} vessel_metadata_t;
-
-/**
- * @brief Callback signature for key enumeration.
- * Called once for every key matching the prefix in vessel_get_all_keys.
- */
-typedef void (*vessel_key_callback)(const char* key);
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
     /**
-     * @brief Initializes a new VesselStorage instance at the specified path.
+     * @brief Opaque handle representing a VesselStorage instance.
+     */
+    typedef void* vessel_t;
+
+    /**
+     * @brief Error codes returned by Vessel API functions.
+     */
+    typedef enum {
+        VESSEL_SUCCESS = 0,             /**< Operation completed successfully. */
+        VESSEL_ERR_UNKNOWN = -1,        /**< An unexpected internal error occurred. */
+        VESSEL_ERR_INVALID_ARGUMENT = -2,/**< One or more arguments are null or invalid. */
+        VESSEL_ERR_NOT_FOUND = -3,       /**< The requested key was not found. */
+        VESSEL_ERR_ALREADY_EXISTS = -4,  /**< Object exists and overwrite was not allowed. */
+        VESSEL_ERR_IO = -5,              /**< A filesystem or I/O error occurred. */
+        VESSEL_ERR_DISPOSED = -6,        /**< The storage instance has been disposed. */
+        VESSEL_ERR_INVALID_OPERATION = -7 /**< Operation not allowed in current state. */
+    } vessel_error_t;
+
+    /**
+     * @brief Input metadata for object storage operations.
+     * Corresponds to ObjectInfo in C#.
+     */
+    typedef struct {
+        const char* file_name;      /**< Optional: Original file name. Can be NULL. */
+        const char* file_extension; /**< Optional: File extension. Can be NULL. */
+        const char* mime_type;      /**< Optional: Content MIME type. Can be NULL. */
+    } vessel_object_info_t;
+
+    /**
+     * @brief Container for retrieved object data and metadata.
      *
-     * @param path The root directory for metadata and blobs.
-     * @param out_handle Pointer to receive the storage handle.
-     * @return VESSEL_SUCCESS on success, or an error code.
+     * IMPORTANT: This structure contains pointers to memory allocated by the library.
+     * You MUST call vessel_free_object() to release this memory once you are done.
+     */
+    typedef struct {
+        uint8_t* data;          /**< Pointer to the payload buffer. */
+        int64_t  length;        /**< Size of the data buffer in bytes. */
+        char* checksum;      /**< SHA256 hash of the content. */
+        char* file_name;     /**< Stored file name. Can be NULL. */
+        char* extension;     /**< Stored file extension. Can be NULL. */
+        char* mime_type;     /**< Stored MIME type. Can be NULL. */
+    } vessel_object_t;
+
+    /**
+     * @brief Callback signature for key enumeration.
+     * @param key Null-terminated UTF-8 string containing the object key.
+     */
+    typedef void (*vessel_key_callback)(const char* key);
+
+    /**
+     * @brief Initializes the storage engine at the specified path.
+     *
+     * @param path Root directory for storage.
+     * @param out_handle Pointer to receive the instance handle.
+     * @return vessel_error_t status.
      */
     vessel_error_t vessel_init(const char* path, vessel_t* out_handle);
 
     /**
      * @brief Stores an object payload.
      *
-     * @param handle The storage instance handle.
-     * @param key The stable logical identifier.
-     * @param data Pointer to the buffer containing the payload.
-     * @param length Length of the data buffer in bytes.
-     * @param overwrite 1 to replace existing object, 0 to fail if key exists.
-     * @param info Optional metadata (can be empty struct).
+     * @param handle Storage handle.
+     * @param key Unique identifier for the object.
+     * @param data Pointer to the buffer to store.
+     * @param length Size of the buffer.
+     * @param overwrite 1 to replace existing, 0 to fail if exists.
+     * @param info Optional metadata struct.
      * @param comp_type Compression algorithm (0=None, 1=Zstd, 2=LZ4).
      * @param comp_level Compression level (0=Fastest, 1=Balanced, 2=High, 3=Ultra).
-     * @return VESSEL_SUCCESS on success, or an error code.
+     * @return vessel_error_t status.
      */
     vessel_error_t vessel_put(
         vessel_t handle,
@@ -96,55 +99,42 @@ extern "C" {
         int32_t comp_level);
 
     /**
-     * @brief Retrieves an object payload and its metadata.
+     * @brief Reads an object (data + metadata) from storage.
      *
-     * @param handle The storage instance handle.
-     * @param key The logical key to look up.
-     * @param out_data Pointer to receive the buffer address (Must be freed with vessel_free_buffer).
-     * @param out_len Pointer to receive the length of the retrieved data.
-     * @param out_metadata Pointer to receive the metadata (Must be freed with vessel_free_metadata).
-     * @return VESSEL_SUCCESS on success, or VESSEL_ERR_NOT_FOUND.
+     * @param handle Storage handle.
+     * @param key Key to look up.
+     * @param out_obj Pointer to a vessel_object_t that will be filled with data.
+     * @return vessel_error_t status.
      */
-    vessel_error_t vessel_read(
-        vessel_t handle,
-        const char* key,
-        uint8_t** out_data,
-        int32_t* out_len,
-        vessel_metadata_t* out_metadata);
+    vessel_error_t vessel_read(vessel_t handle, const char* key, vessel_object_t* out_obj);
 
     /**
-     * @brief Deletes an object from the storage.
+     * @brief Deletes an object from storage.
      *
-     * @param handle The storage instance handle.
-     * @param key The logical key to delete.
-     * @param out_deleted Pointer to receive 1 if an object was actually deleted, 0 otherwise.
-     * @return VESSEL_SUCCESS on success, or an error code.
+     * @param handle Storage handle.
+     * @param key Key to delete.
+     * @param out_deleted Pointer to receive 1 if deleted, 0 if not found.
+     * @return vessel_error_t status.
      */
     vessel_error_t vessel_delete(vessel_t handle, const char* key, int32_t* out_deleted);
 
     /**
-     * @brief Enumerates all keys matching the specified prefix.
+     * @brief Enumerates all keys matching the prefix.
      *
-     * @param handle The storage instance handle.
-     * @param prefix The string to match at the beginning of keys (empty string for all keys).
-     * @param callback Function called for each key found.
-     * @return VESSEL_SUCCESS on success, or an error code.
+     * @param handle Storage handle.
+     * @param prefix Search prefix (empty string for all keys).
+     * @param callback Function called for every found key.
+     * @return vessel_error_t status.
      */
     vessel_error_t vessel_get_all_keys(vessel_t handle, const char* prefix, vessel_key_callback callback);
 
     /**
-     * @brief Frees the string members within a metadata structure.
-     * Should be called after vessel_get or vessel_get_metadata.
+     * @brief Safely releases all memory associated with a vessel_object_t.
      */
-    void vessel_free_metadata(vessel_metadata_t metadata);
+    void vessel_free_object(vessel_object_t obj);
 
     /**
-     * @brief Frees a data buffer allocated by the library.
-     */
-    void vessel_free_buffer(uint8_t* buffer);
-
-    /**
-     * @brief Disposes of the storage instance and releases the managed handle.
+     * @brief Disposes the storage engine and releases the handle.
      */
     void vessel_dispose(vessel_t handle);
 

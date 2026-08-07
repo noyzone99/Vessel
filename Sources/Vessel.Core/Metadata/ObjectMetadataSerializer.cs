@@ -1,7 +1,6 @@
 ﻿using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Text;
-using Vessel.Models;
 using ZoneTree.Serializers;
 
 namespace Vessel.Metadata;
@@ -25,7 +24,7 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
 
         int bytesWritten = 0;
 
-        BinaryPrimitives.WriteInt64LittleEndian(destination[bytesWritten..], entry.Size);
+        BinaryPrimitives.WriteInt64LittleEndian(destination[bytesWritten..], entry.OriginalSize);
         bytesWritten += 8;
 
         BinaryPrimitives.WriteInt64LittleEndian(destination[bytesWritten..], entry.CompressedSize);
@@ -34,7 +33,7 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
         BinaryPrimitives.WriteInt32LittleEndian(destination[bytesWritten..], (int)entry.CompressionType);
         bytesWritten += 4;
 
-        BinaryPrimitives.WriteInt64LittleEndian(destination[bytesWritten..], entry.LastModified.ToUnixTimeMilliseconds());
+        BinaryPrimitives.WriteInt64LittleEndian(destination[bytesWritten..], entry.CreationDate.ToUnixTimeMilliseconds());
         bytesWritten += 8;
 
         WriteString(entry.Key, destination, ref bytesWritten);
@@ -57,7 +56,7 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
         ReadOnlySpan<byte> source = bytes.Span;
         int bytesRead = 0;
 
-        long size = BinaryPrimitives.ReadInt64LittleEndian(source[bytesRead..]);
+        long originalSize = BinaryPrimitives.ReadInt64LittleEndian(source[bytesRead..]);
         bytesRead += 8;
 
         long compressedSize = BinaryPrimitives.ReadInt64LittleEndian(source[bytesRead..]);
@@ -67,7 +66,7 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
         bytesRead += 4;
 
         long lastModifiedMs = BinaryPrimitives.ReadInt64LittleEndian(source[bytesRead..]);
-        DateTimeOffset lastModified = DateTimeOffset.FromUnixTimeMilliseconds(lastModifiedMs);
+        DateTimeOffset creationDate = DateTimeOffset.FromUnixTimeMilliseconds(lastModifiedMs);
         bytesRead += 8;
 
         string key = ReadString(source, ref bytesRead)!;
@@ -80,10 +79,10 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
         return new ObjectMetadata(
             Key: key,
             Hash: hash,
-            Size: size,
+            OriginalSize: originalSize,
             CompressionType: compressionType,
             ETag: eTag,
-            LastModified: lastModified,
+            CreationDate: creationDate,
             FileName: fileName,
             Extension: extension,
             MimeType: mimeType,
@@ -147,7 +146,7 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
     /// <summary>
     /// Determines the number of bytes required to serialize the supplied metadata value.
     /// </summary>
-    /// <param name="metadata">The metadata value whose serialized size should be calculated.</param>
+    /// <param name="metadata">The metadata value whose serialized originalSize should be calculated.</param>
     /// <returns>The total number of bytes required by the serialization format.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetRequiredByteCount(in ObjectMetadata metadata)
@@ -163,7 +162,7 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
     }
 
     /// <summary>
-    /// Computes the serialized byte size of a nullable string value.
+    /// Computes the serialized byte originalSize of a nullable string value.
     /// </summary>
     /// <param name="str">The string value to measure.</param>
     /// <returns>The number of bytes required to encode the supplied string.</returns>

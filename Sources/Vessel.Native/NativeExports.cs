@@ -1,6 +1,5 @@
 ﻿using System.Runtime.InteropServices;
 using System.Text;
-using Vessel.Models;
 
 namespace Vessel.Native;
 
@@ -51,31 +50,45 @@ public static unsafe class NativeExports
     }
 
     [UnmanagedCallersOnly(EntryPoint = "vessel_read")]
-    public static VesselError Read(IntPtr handle, byte* keyPtr, byte** outData, int* outLen, NativeObjectMetadata* outMetadata)
+    public static VesselError Read(IntPtr handle, byte* keyPtr, NativeVesselObject* outObj)
     {
+        byte* nativeBuffer = null;
         try
         {
             var storage = GetStorage(handle);
             string key = Marshal.PtrToStringUTF8((IntPtr)keyPtr)!;
 
-            using var response = storage.GetStream(key);
+            using VesselStream vStream = storage.GetStream(key);
 
-            *outMetadata = MapMetadata(response.Metadata);
+            if (vStream.Length > 0)
+            {
+                nativeBuffer = (byte*)NativeMemory.Alloc((nuint)vStream.Length);
+                using var nativeStream = new UnmanagedMemoryStream(nativeBuffer, vStream.Length, vStream.Length, FileAccess.Write);
+                vStream.CopyTo(nativeStream);
+            }
 
-            int length = (int)response.ContentStream.Length;
-            byte* nativeBuffer = (byte*)NativeMemory.Alloc((nuint)length);
-
-            using var nativeStream = new UnmanagedMemoryStream(nativeBuffer, length, length, FileAccess.Write);
-            response.ContentStream.CopyTo(nativeStream);
-
-            *outData = nativeBuffer;
-            *outLen = length;
+            *outObj = new NativeVesselObject
+            {
+                Data = nativeBuffer,
+                Length = vStream.Length,
+                Checksum = AllocNativeString(vStream.Checksum),
+                FileName = vStream.FileName != null ? AllocNativeString(vStream.FileName) : null,
+                Extension = vStream.Extension != null ? AllocNativeString(vStream.Extension) : null,
+                MimeType = vStream.MimeType != null ? AllocNativeString(vStream.MimeType) : null
+            };
 
             return VesselError.Success;
         }
-        catch (FileNotFoundException) { return VesselError.NotFound; }
-        catch (ObjectDisposedException) { return VesselError.Disposed; }
-        catch (Exception) { return VesselError.UnknownError; }
+        catch (FileNotFoundException)
+        {
+            if (nativeBuffer != null) NativeMemory.Free(nativeBuffer);
+            return VesselError.NotFound;
+        }
+        catch (Exception)
+        {
+            if (nativeBuffer != null) NativeMemory.Free(nativeBuffer);
+            return VesselError.UnknownError;
+        }
     }
 
     [UnmanagedCallersOnly(EntryPoint = "vessel_delete")]
@@ -113,21 +126,15 @@ public static unsafe class NativeExports
         catch (Exception) { return VesselError.UnknownError; }
     }
 
-    [UnmanagedCallersOnly(EntryPoint = "vessel_free_metadata")]
-    public static void FreeMetadata(NativeObjectMetadata metadata)
+    [UnmanagedCallersOnly(EntryPoint = "vessel_free_object")]
+    public static void FreeObject(NativeVesselObject obj)
     {
-        FreeNativeString(metadata.Key);
-        FreeNativeString(metadata.Hash);
-        FreeNativeString(metadata.ETag);
-        FreeNativeString(metadata.FileName);
-        FreeNativeString(metadata.Extension);
-        FreeNativeString(metadata.MimeType);
-    }
+        if (obj.Data != null) NativeMemory.Free(obj.Data);
 
-    [UnmanagedCallersOnly(EntryPoint = "vessel_free_buffer")]
-    public static void FreeBuffer(byte* buffer)
-    {
-        if (buffer != null) NativeMemory.Free(buffer);
+        FreeNativeString(obj.Checksum);
+        FreeNativeString(obj.FileName);
+        FreeNativeString(obj.Extension);
+        FreeNativeString(obj.MimeType);
     }
 
     [UnmanagedCallersOnly(EntryPoint = "vessel_dispose")]
@@ -140,23 +147,6 @@ public static unsafe class NativeExports
     }
 
     private static VesselStorage GetStorage(IntPtr handle) => (VesselStorage)GCHandle.FromIntPtr(handle).Target!;
-
-    private static NativeObjectMetadata MapMetadata(ObjectMetadata md)
-    {
-        return new NativeObjectMetadata
-        {
-            Size = md.Size,
-            CompressedSize = md.CompressedSize,
-            CompressionType = (int)md.CompressionType,
-            LastModifiedUnix = md.LastModified.ToUnixTimeSeconds(),
-            Key = AllocNativeString(md.Key),
-            Hash = AllocNativeString(md.Hash),
-            ETag = AllocNativeString(md.ETag),
-            FileName = md.FileName != null ? AllocNativeString(md.FileName) : null,
-            Extension = md.Extension != null ? AllocNativeString(md.Extension) : null,
-            MimeType = md.MimeType != null ? AllocNativeString(md.MimeType) : null
-        };
-    }
 
     private static byte* AllocNativeString(string str)
     {
