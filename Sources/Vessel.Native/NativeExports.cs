@@ -91,6 +91,39 @@ public static unsafe class NativeExports
         }
     }
 
+    [UnmanagedCallersOnly(EntryPoint = "vessel_get_metadata")]
+    public static VesselError GetMetadata(IntPtr handle, byte* keyPtr, NativeObjectMetadata* outMetadata)
+    {
+        try
+        {
+            var storage = GetStorage(handle);
+            string key = Marshal.PtrToStringUTF8((IntPtr)keyPtr)!;
+
+            var md = storage.GetMetadata(key);
+            if (md == null) return VesselError.NotFound;
+
+            var metadata = md.Value;
+
+            *outMetadata = new NativeObjectMetadata
+            {
+                OriginalSize = metadata.OriginalSize,
+                CompressedSize = metadata.CompressedSize,
+                CompressionType = (int)metadata.CompressionType,
+                CreationDateUnix = metadata.CreationDate.ToUnixTimeSeconds(),
+                Key = AllocNativeString(metadata.Key),
+                Hash = AllocNativeString(metadata.Hash),
+                ETag = AllocNativeString(metadata.ETag),
+                FileName = metadata.FileName != null ? AllocNativeString(metadata.FileName) : null,
+                Extension = metadata.Extension != null ? AllocNativeString(metadata.Extension) : null,
+                MimeType = metadata.MimeType != null ? AllocNativeString(metadata.MimeType) : null
+            };
+
+            return VesselError.Success;
+        }
+        catch (ObjectDisposedException) { return VesselError.Disposed; }
+        catch (Exception) { return VesselError.UnknownError; }
+    }
+
     [UnmanagedCallersOnly(EntryPoint = "vessel_delete")]
     public static VesselError Delete(IntPtr handle, byte* keyPtr, int* outDeleted)
     {
@@ -135,6 +168,17 @@ public static unsafe class NativeExports
         FreeNativeString(obj.FileName);
         FreeNativeString(obj.Extension);
         FreeNativeString(obj.MimeType);
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_free_metadata")]
+    public static void FreeMetadata(NativeObjectMetadata metadata)
+    {
+        FreeNativeString(metadata.Key);
+        FreeNativeString(metadata.Hash);
+        FreeNativeString(metadata.ETag);
+        FreeNativeString(metadata.FileName);
+        FreeNativeString(metadata.Extension);
+        FreeNativeString(metadata.MimeType);
     }
 
     [UnmanagedCallersOnly(EntryPoint = "vessel_dispose")]

@@ -5,10 +5,10 @@ namespace Vessel.Native;
 [StructLayout(LayoutKind.Sequential)]
 public unsafe struct NativeObjectMetadata
 {
-    public long Size;
+    public long OriginalSize;
     public long CompressedSize;
     public int CompressionType;
-    public long LastModifiedUnix;
+    public long CreationDateUnix;
     public byte* Key;
     public byte* Hash;
     public byte* ETag;
