@@ -9,16 +9,24 @@
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<PublishAot>true</PublishAot>
 		<NativeLib>Shared</NativeLib>
+		<AssemblyName>vessel</AssemblyName>
 	</PropertyGroup>
 
-	<ItemGroup>
-	  <ProjectReference Include="..\Vessel.Core\Vessel.Core.csproj" />
+	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
+		<DebugSymbols>false</DebugSymbols>
+		<DebugType>none</DebugType>
+		<StripSymbols>true</StripSymbols>
+	</PropertyGroup>
+
+	<ItemGroup Condition="'$(Configuration)' == 'Release'">
+		<None Include="vessel.h">
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<TargetPath>..\native\vessel.h</TargetPath>
+		</None>
 	</ItemGroup>
 
 	<ItemGroup>
-	  <None Update="vessel.h">
-	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	  </None>
+		<ProjectReference Include="..\Vessel.Core\Vessel.Core.csproj" />
 	</ItemGroup>
 
 </Project>

@@ -2,6 +2,10 @@
   "version": 2,
   "items": [
     {
+      "name": ".gitignore",
+      "path": ".gitignore"
+    },
+    {
       "name": "TODO.txt",
       "path": "TODO.txt"
     }
