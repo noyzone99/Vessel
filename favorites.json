@@ -6,6 +6,14 @@
       "path": ".gitignore"
     },
     {
+      "name": "LICENSE",
+      "path": "LICENSE"
+    },
+    {
+      "name": "README.md",
+      "path": "README.md"
+    },
+    {
       "name": "TODO.txt",
       "path": "TODO.txt"
     }

@@ -111,57 +111,55 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
             {
                 Span<byte> hashBytes = stackalloc byte[32];
                 SHA256.HashData(sourceMemory.Span, hashBytes);
-                hash = ToLowerHexString(hashBytes);
-            }
-
-            var blobIdentifier = GetBlobIdentifier(hash, compressionType);
-            var destinationPath = GetBlobPath(blobIdentifier);
-
-            if (File.Exists(destinationPath))
-            {
-                return new BlobInfo(blobIdentifier, originalSize, new FileInfo(destinationPath).Length);
-            }
-
-            ReadOnlyMemory<byte> dataToWrite;
-
-            if (compressionType == CompressionType.None)
-            {
-                dataToWrite = sourceMemory;
-            }
-            else
-            {
-                compressedBuffer = ArrayPool<byte>.Shared.Rent(originalSize + 1024);
-                int compressedSize = CompressBuffer(sourceMemory.Span, compressedBuffer, compressionType, compressionLevel);
-                dataToWrite = compressedBuffer.AsMemory(0, compressedSize);
-            }
-
-            var tempFilePath = GetTempFilePath();
-            try
-            {
 #if NET10_0_OR_GREATER
-                await File.WriteAllBytesAsync(tempFilePath, dataToWrite, cancellationToken).ConfigureAwait(false);
-                var dir = Path.GetDirectoryName(destinationPath)!;
-                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-
-                File.Move(tempFilePath, destinationPath, overwrite: false);
+                hash = Convert.ToHexStringLower(hashBytes);
 #else
-                await using (var fs = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                    bufferSize: 1,
-                    FileOptions.Asynchronous))
+                hash = ToLowerHexString(hashBytes);
+#endif
+                var blobIdentifier = GetBlobIdentifier(hash, compressionType);
+                var destinationPath = GetBlobPath(blobIdentifier);
+
+                if (File.Exists(destinationPath))
                 {
-                    await fs.WriteAsync(dataToWrite, cancellationToken).ConfigureAwait(false);
+                    return new BlobInfo(blobIdentifier, originalSize, new FileInfo(destinationPath).Length);
                 }
 
-                var dir = Path.GetDirectoryName(destinationPath)!;
-                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                ReadOnlyMemory<byte> dataToWrite;
 
-                File.Move(tempFilePath, destinationPath, overwrite: false);
+                if (compressionType == CompressionType.None)
+                {
+                    dataToWrite = sourceMemory;
+                }
+                else
+                {
+                    compressedBuffer = ArrayPool<byte>.Shared.Rent(originalSize + 1024);
+                    int compressedSize = CompressBuffer(sourceMemory.Span, compressedBuffer, compressionType, compressionLevel);
+                    dataToWrite = compressedBuffer.AsMemory(0, compressedSize);
+                }
+
+                var tempFilePath = GetTempFilePath();
+                try
+                {
+#if NET10_0_OR_GREATER
+                    await File.WriteAllBytesAsync(tempFilePath, dataToWrite, cancellationToken).ConfigureAwait(false);
+                    var dir = Path.GetDirectoryName(destinationPath)!;
+                    Directory.CreateDirectory(dir);
+#else
+                    await using (var fs = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 1, FileOptions.Asynchronous))
+                    {
+                        await fs.WriteAsync(dataToWrite, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    var dir = Path.GetDirectoryName(destinationPath)!;
+                    Directory.CreateDirectory(dir);
 #endif
-            }
-            catch (IOException) when (File.Exists(destinationPath)) { }
-            finally { TryDeleteFile(tempFilePath); }
+                    File.Move(tempFilePath, destinationPath, overwrite: false);
+                }
+                catch (IOException) when (File.Exists(destinationPath)) { }
+                finally { TryDeleteFile(tempFilePath); }
 
-            return new BlobInfo(blobIdentifier, originalSize, dataToWrite.Length);
+                return new BlobInfo(blobIdentifier, originalSize, dataToWrite.Length);
+            }
         }
         finally
         {
@@ -216,7 +214,11 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
 
             Span<byte> hashBytes = stackalloc byte[32];
             hasher.GetHashAndReset(hashBytes);
+#if NET10_0_OR_GREATER
+            string hash = Convert.ToHexStringLower(hashBytes);
+#else
             string hash = ToLowerHexString(hashBytes);
+#endif
             var blobIdentifier = GetBlobIdentifier(hash, compressionType);
 
             var destinationPath = GetBlobPath(blobIdentifier);
@@ -406,6 +408,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         return Path.Join(_tmpPath, $"{guidChars}.tmp");
     }
 
+#if !NET10_0_OR_GREATER
     /// <summary>
     /// Formats the supplied bytes as a lowercase hexadecimal string suitable for blob identifiers.
     /// </summary>
@@ -427,6 +430,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
             });
         }
     }
+#endif
 
     /// <summary>
     /// Stops the background delete worker and releases the engine's disposable resources.

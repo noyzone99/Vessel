@@ -1,3 +1,10 @@
 * Compare current compression packages with NativeCompressions
-* Replace logger with safer one
-* Create response with VesselStream 
+* Replace logger with better one
+* Compare current hasing with Blake3
+* Add HMAC-SHA256 support to avoid dos file system attack
+* Add put method with VesselStream input
+* Add compression filter to avoid compression on uncompressable objects
+* Add suppot to Compressor interface to standardize compression
+* Add support to Pipelines and Put method with PipeWriter
+* Add official bindings for python, java, nodejs
+* Add Hosting progect to support Microsoft.Extensions.Hosting and DI natively
