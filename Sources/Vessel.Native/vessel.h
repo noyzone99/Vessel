@@ -21,6 +21,11 @@ extern "C" {
     typedef void* vessel_t;
 
     /**
+     * @brief Opaque handle representing an open read stream.
+     */
+    typedef void* vessel_stream_t;
+
+    /**
      * @brief Status codes for Vessel operations.
      */
     typedef enum {
@@ -54,9 +59,18 @@ extern "C" {
     } vessel_compression_level_t;
 
     /**
-     * @brief Input structure for storing object properties.
-     * Maps to ObjectInfo in C#.
+     * @brief Seek origins for vessel_stream_seek().
+     *
+     * Mirror the C standard library SEEK_* constants.
      */
+#define VESSEL_SEEK_SET 0 /**< Seek from the beginning of the stream. */
+#define VESSEL_SEEK_CUR 1 /**< Seek from the current position.        */
+#define VESSEL_SEEK_END 2 /**< Seek from the end of the stream.       */
+
+     /**
+      * @brief Input structure for storing object properties.
+      * Maps to ObjectInfo in C#.
+      */
     typedef struct {
         const char* file_name;      /**< Optional original file name. */
         const char* extension;      /**< Optional file extension (e.g., ".json"). */
@@ -66,7 +80,7 @@ extern "C" {
     /**
      * @brief Full metadata for an object stored in Vessel.
      *
-     * IMPORTANT: This structure contains allocated strings.
+     * IMPORTANT: This structure contains heap-allocated strings.
      * MUST be freed by calling vessel_free_metadata().
      */
     typedef struct {
@@ -85,7 +99,7 @@ extern "C" {
     /**
      * @brief Combined data and essential metadata for a retrieved object.
      *
-     * IMPORTANT: Contains allocated buffer and strings.
+     * IMPORTANT: Contains a heap-allocated buffer and strings.
      * MUST be freed by calling vessel_free_object().
      */
     typedef struct {
@@ -99,7 +113,9 @@ extern "C" {
 
     /**
      * @brief Callback signature for key enumeration.
-     * @param key A null-terminated UTF-8 string.
+     * @param key A null-terminated UTF-8 string. The pointer is valid only
+     *            for the duration of the callback invocation; copy it if
+     *            you need to keep it.
      */
     typedef void (*vessel_key_callback)(const char* key);
 
@@ -136,7 +152,11 @@ extern "C" {
         int32_t comp_level);
 
     /**
-     * @brief Reads an object's payload and essential metadata.
+     * @brief Reads an entire object's payload and essential metadata into memory.
+     *
+     * This is a convenience helper for small blobs. For large objects,
+     * use the streaming API (vessel_stream_open / vessel_stream_read) to
+     * avoid allocating the full payload in a single contiguous buffer.
      *
      * @param handle The storage handle.
      * @param key The key to look up.
@@ -171,21 +191,109 @@ extern "C" {
      * @param handle The storage handle.
      * @param prefix Prefix to filter keys (use "" for all keys).
      * @param callback Function called for every key found.
+     * @return VESSEL_SUCCESS or error code.
      */
     vessel_error_t vessel_get_all_keys(vessel_t handle, const char* prefix, vessel_key_callback callback);
 
-    /**
-     * @brief Frees the payload buffer and strings inside a vessel_object_t.
-     */
-    void vessel_free_object(vessel_object_t obj);
+    /* ==================================================================== */
+    /* Streaming API                                                        */
+    /* ==================================================================== */
 
     /**
-     * @brief Frees all string members inside a vessel_metadata_t.
+     * @brief Opens a zero-copy read stream for the specified key.
+     *
+     * The returned stream handle must be closed with vessel_stream_close().
+     * Multiple independent streams may be opened concurrently.
+     *
+     * @param handle The storage instance handle.
+     * @param key The logical key to open.
+     * @param out_stream Pointer to receive the stream handle.
+     * @return VESSEL_SUCCESS or VESSEL_ERR_NOT_FOUND.
      */
-    void vessel_free_metadata(vessel_metadata_t metadata);
+    vessel_error_t vessel_stream_open(vessel_t handle, const char* key, vessel_stream_t* out_stream);
+
+    /**
+     * @brief Reads up to @p count bytes from the stream into @p buffer.
+     *
+     * This is a direct, zero-copy read into the caller-supplied buffer.
+     * When the end of the stream is reached, @p out_bytes_read is set to 0
+     * and VESSEL_SUCCESS is still returned.
+     *
+     * @param stream The stream handle obtained from vessel_stream_open().
+     * @param buffer Caller-allocated buffer to receive the bytes.
+     * @param count Maximum number of bytes to read.
+     * @param out_bytes_read Pointer to receive the actual number of bytes read.
+     * @return VESSEL_SUCCESS or error code.
+     */
+    vessel_error_t vessel_stream_read(
+        vessel_stream_t stream,
+        uint8_t* buffer,
+        int32_t count,
+        int32_t* out_bytes_read);
+
+    /**
+     * @brief Returns the total length of the stream in bytes.
+     *
+     * @param stream The stream handle.
+     * @param out_length Pointer to receive the length.
+     * @return VESSEL_SUCCESS or error code.
+     */
+    vessel_error_t vessel_stream_length(vessel_stream_t stream, int64_t* out_length);
+
+    /**
+     * @brief Returns the current position within the stream.
+     *
+     * @param stream The stream handle.
+     * @param out_position Pointer to receive the position.
+     * @return VESSEL_SUCCESS or error code.
+     */
+    vessel_error_t vessel_stream_position(vessel_stream_t stream, int64_t* out_position);
+
+    /**
+     * @brief Repositions the stream offset.
+     *
+     * @param stream The stream handle.
+     * @param offset Byte offset relative to @p origin.
+     * @param origin One of VESSEL_SEEK_SET, VESSEL_SEEK_CUR, or VESSEL_SEEK_END.
+     * @return VESSEL_SUCCESS or error code.
+     */
+    vessel_error_t vessel_stream_seek(vessel_stream_t stream, int64_t offset, int32_t origin);
+
+    /**
+     * @brief Closes the stream and releases all associated resources.
+     *
+     * @param stream The stream handle. Safe to call with NULL (no-op).
+     */
+    void vessel_stream_close(vessel_stream_t stream);
+
+    /* ==================================================================== */
+    /* Cleanup helpers                                                      */
+    /* ==================================================================== */
+
+    /**
+     * @brief Frees the payload buffer and strings inside a vessel_object_t.
+     *
+     * All pointer fields inside the structure are set to NULL after freeing,
+     * preventing accidental double-free.
+     *
+     * @param obj Pointer to the object structure. Safe to call with NULL (no-op).
+     */
+    void vessel_free_object(vessel_object_t* obj);
+
+    /**
+     * @brief Frees all heap-allocated string members inside a vessel_metadata_t.
+     *
+     * All pointer fields inside the structure are set to NULL after freeing,
+     * preventing accidental double-free.
+     *
+     * @param metadata Pointer to the metadata structure. Safe to call with NULL (no-op).
+     */
+    void vessel_free_metadata(vessel_metadata_t* metadata);
 
     /**
      * @brief Closes the storage engine and releases the handle.
+     *
+     * @param handle The storage handle. Safe to call with NULL (no-op).
      */
     void vessel_dispose(vessel_t handle);
 
