@@ -1,6 +1,6 @@
 # Java API reference
 
-The JDK 25 binding exports package `io.github.berik99.vessel` and uses [Vessel C ABI 1](../C/README.md). See the [Java user guide](../../UserGuide/Java/README.md) for the Maven and Gradle setup and JVM native access options.
+The JDK 25 binding exports package `io.github.noyzone99.vessel` and uses [Vessel C ABI 1](../C/README.md). See the [Java user guide](../../UserGuide/Java/README.md) for the Maven and Gradle setup and JVM native access options.
 
 ## `VesselStorage`
 

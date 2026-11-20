@@ -1,4 +1,4 @@
-package io.github.berik99.vessel;
+package io.github.noyzone99.vessel;
 
 /** Presets for the selected payload codec. */
 public enum CompressionLevel {

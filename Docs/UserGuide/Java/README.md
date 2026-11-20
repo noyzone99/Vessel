@@ -8,7 +8,7 @@ Add the Maven dependency once the version is available on Maven Central, or [bui
 
 ```xml
 <dependency>
-  <groupId>io.github.berik-99</groupId>
+  <groupId>io.github.noyzone99</groupId>
   <artifactId>vessel-storage</artifactId>
   <version>0.0.1-alpha.1</version>
 </dependency>
@@ -18,12 +18,12 @@ Gradle Kotlin DSL uses the same coordinates.
 
 ```kotlin
 repositories { mavenCentral() }
-dependencies { implementation("io.github.berik-99:vessel-storage:0.0.1-alpha.1") }
+dependencies { implementation("io.github.noyzone99:vessel-storage:0.0.1-alpha.1") }
 ```
 
-Pass `--enable-native-access=ALL-UNNAMED` to the application JVM for classpath use. On the module path, use `--enable-native-access=io.github.berik99.vessel`. The binding picks the bundled binary for the running JVM and loads it automatically. Set `-Dvessel.library.path=/absolute/path/to/libvessel.so` to load a matching external library, for example when a container has a restricted temporary filesystem.
+Pass `--enable-native-access=ALL-UNNAMED` to the application JVM for classpath use. On the module path, use `--enable-native-access=io.github.noyzone99.vessel`. The binding picks the bundled binary for the running JVM and loads it automatically. Set `-Dvessel.library.path=/absolute/path/to/libvessel.so` to load a matching external library, for example when a container has a restricted temporary filesystem.
 
-To use the files from a [GitHub Release](https://github.com/berik-99/Vessel/releases), download the JAR and POM for the same version and install them in your local Maven repository.
+To use the files from a [GitHub Release](https://github.com/noyzone99/Vessel/releases), download the JAR and POM for the same version and install them in your local Maven repository.
 
 ```shell
 mvn install:install-file -Dfile=vessel-storage-0.0.1-alpha.1.jar -DpomFile=vessel-storage-0.0.1-alpha.1.pom

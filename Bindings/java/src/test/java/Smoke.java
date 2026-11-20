@@ -1,10 +1,10 @@
-import io.github.berik99.vessel.CompressionLevel;
-import io.github.berik99.vessel.CompressionType;
-import io.github.berik99.vessel.ObjectMetadata;
-import io.github.berik99.vessel.VesselException;
-import io.github.berik99.vessel.VesselInputStream;
-import io.github.berik99.vessel.VesselStorage;
-import io.github.berik99.vessel.WriteOptions;
+import io.github.noyzone99.vessel.CompressionLevel;
+import io.github.noyzone99.vessel.CompressionType;
+import io.github.noyzone99.vessel.ObjectMetadata;
+import io.github.noyzone99.vessel.VesselException;
+import io.github.noyzone99.vessel.VesselInputStream;
+import io.github.noyzone99.vessel.VesselStorage;
+import io.github.noyzone99.vessel.WriteOptions;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;

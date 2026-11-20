@@ -1,4 +1,4 @@
-package io.github.berik99.vessel;
+package io.github.noyzone99.vessel;
 
 /** Payload codecs supported by Vessel. */
 public enum CompressionType {

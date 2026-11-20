@@ -407,7 +407,7 @@ jobs:
           export GNUPGHOME
           GNUPGHOME=$(mktemp -d)
           printf '%s\n' "$CENTRAL_GPG_PRIVATE_KEY" | gpg --batch --import
-          path="io/github/berik-99/vessel-storage/$VESSEL_VERSION"
+          path="io/github/noyzone99/vessel-storage/$VESSEL_VERSION"
           mkdir -p "artifacts/central/$path"
           base="vessel-storage-$VESSEL_VERSION"
           for file in "$base.jar" "$base-sources.jar" "$base-javadoc.jar" "$base.pom"; do

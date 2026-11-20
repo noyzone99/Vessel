@@ -21,7 +21,7 @@ Vessel is designed to keep memory use predictable while streaming large objects 
 - [Python](Docs/UserGuide/Python/README.md) uses the `vessel-storage` wheel with its bundled native library.
 - [Java](Docs/UserGuide/Java/README.md) uses the `vessel-storage` JAR on Java 25 with bundled native libraries.
 
-For published versions, find the native C archives, NuGet package, Python wheels and Java JARs in [GitHub Releases](https://github.com/berik-99/Vessel/releases). The [user guide](Docs/UserGuide/README.md) links to the package registries.
+For published versions, find the native C archives, NuGet package, Python wheels and Java JARs in [GitHub Releases](https://github.com/noyzone99/Vessel/releases). The [user guide](Docs/UserGuide/README.md) links to the package registries.
 
 ## Build from source
 

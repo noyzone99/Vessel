@@ -1,4 +1,4 @@
-package io.github.berik99.vessel;
+package io.github.noyzone99.vessel;
 
 import java.io.IOException;
 import java.io.InputStream;

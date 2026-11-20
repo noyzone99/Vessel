@@ -5,7 +5,7 @@ plugins {
 repositories {
     if (providers.gradleProperty("vesselLocal").isPresent) {
         mavenLocal {
-            content { includeModule("io.github.berik-99", "vessel-storage") }
+            content { includeModule("io.github.noyzone99", "vessel-storage") }
         }
     }
     mavenCentral()
@@ -14,7 +14,7 @@ repositories {
 val vesselVersion = providers.gradleProperty("vesselVersion").getOrElse("0.0.1-alpha.1")
 
 dependencies {
-    implementation("io.github.berik-99:vessel-storage:$vesselVersion")
+    implementation("io.github.noyzone99:vessel-storage:$vesselVersion")
 }
 
 java {
