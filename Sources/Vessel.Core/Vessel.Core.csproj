@@ -15,7 +15,7 @@
 		<Product>Vessel.Core</Product>
 		<Authors>Erik Barale</Authors>
 		<Description>An Object Storage core library for .NET</Description>
-		<Copyright>Copyright © 2026 Erik Barale s.r.l. All rights reserved.</Copyright>
+		<Copyright>Copyright (c) 2026 Erik Barale</Copyright>
 
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
@@ -31,6 +31,7 @@
 	<ItemGroup>
 		<None Include="Assets\README.md" Pack="true" PackagePath="\" />
 		<None Include="Assets\Icon.png" Pack="true" PackagePath="\" />
+		<None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
 	</ItemGroup>
 
 	<ItemGroup>
