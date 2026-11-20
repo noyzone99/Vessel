@@ -16,9 +16,9 @@ Vessel is an embedded object store for application-owned local filesystems. Keep
 | Managed `Vessel.Core` | .NET 8 and .NET 10 |
 | Native `Vessel.Native` | .NET 10 NativeAOT shared library with a C ABI |
 | Native platforms | Windows, Linux (glibc and musl) and macOS, each on x64 and ARM64 |
-| Language integration | C# through `Vessel.Core`, C through `vessel.h`, and Python through `ctypes` |
+| Language integration | C# through `Vessel.Core`, C through `vessel.h`, and Python through `vessel-storage` |
 
-Use the project files and [validation workflow](.github/workflows/validate.yml) to verify framework targets and the native CI matrix. Official bindings for Python, Java and Node.js are planned. Describe roadmap items according to their implementation and validation status.
+Use the project files and [validation workflow](.github/workflows/validate.yml) to verify framework targets and the native CI matrix. Java and Node.js bindings are planned. Describe roadmap items according to their implementation and validation status.
 
 ## Documentation layout
 

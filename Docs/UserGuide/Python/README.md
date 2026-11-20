@@ -2,80 +2,62 @@
 
 ## Setup
 
-Python can load Vessel with the standard library's `ctypes` module. Get the shared library from a [matching native CI artifact](../BuildFromSource.md#platforms-and-architectures) or [build it from source](../BuildFromSource.md#build-the-shared-library). Match the Python process's architecture and, on Linux, its C library. An official Python package is planned.
+Use Python 3.10 or later. For a published alpha, install the wrapper from [PyPI](https://pypi.org/project/vessel-storage/).
+
+~~~sh
+python -m pip install vessel-storage==0.0.1a1
+~~~
+
+Each wheel includes the native library. When installing from PyPI, pip selects the wheel for the Python process's OS, architecture and, on Linux, its C library. See the [release platform matrix](../BuildFromSource.md#platforms-and-architectures).
+
+To install from [GitHub Releases](https://github.com/noyzone99/Vessel/releases), download the matching wheel. For Windows x64, run `python -m pip install ./vessel_storage-0.0.1a1-py3-none-win_amd64.whl`.
+
+To develop from a checkout, install with `python -m pip install ./Bindings/python` and use `library_path` or `VESSEL_LIBRARY_PATH` to select a [native library built from source](../BuildFromSource.md#build-the-shared-library). These settings can also override the bundled library.
 
 ## Write and read an object
 
-Save the following as `hello.py`. It loads the shared library, checks the ABI version, writes an object and copies its payload before freeing the native result.
+Save this as `hello.py`. It creates `my-store` in the working directory.
 
 ~~~python
-import ctypes as c
-from pathlib import Path
-import sys
+from vessel import ObjectInfo, VesselStorage
 
-
-class ObjectInfo(c.Structure):
-    _fields_ = [(name, c.c_char_p) for name in ("file_name", "extension", "mime_type")]
-
-
-class VesselObject(c.Structure):
-    _fields_ = [
-        ("data", c.c_void_p),
-        ("length", c.c_int64),
-        ("checksum", c.c_char_p),
-        ("file_name", c.c_char_p),
-        ("extension", c.c_char_p),
-        ("mime_type", c.c_char_p),
-    ]
-
-
-def check(status):
-    if status != 0:
-        raise RuntimeError(f"Vessel status {status}")
-
-
-vessel = c.CDLL(str(Path(sys.argv[1]).resolve(strict=True)))
-vessel.vessel_abi_version.argtypes = []
-vessel.vessel_abi_version.restype = c.c_int32
-if vessel.vessel_abi_version() != 1:
-    raise RuntimeError("Incompatible Vessel ABI")
-
-vessel.vessel_init.argtypes = [c.c_char_p, c.POINTER(c.c_void_p)]
-vessel.vessel_init.restype = c.c_int32
-vessel.vessel_put.argtypes = [
-    c.c_void_p, c.c_char_p, c.c_void_p, c.c_int32, c.c_int32,
-    ObjectInfo, c.c_int32, c.c_int32,
-]
-vessel.vessel_put.restype = c.c_int32
-vessel.vessel_read.argtypes = [c.c_void_p, c.c_char_p, c.POINTER(VesselObject)]
-vessel.vessel_read.restype = c.c_int32
-vessel.vessel_free_object.argtypes = [c.POINTER(VesselObject)]
-vessel.vessel_free_object.restype = None
-vessel.vessel_dispose.argtypes = [c.c_void_p]
-vessel.vessel_dispose.restype = None
-
-store = c.c_void_p()
-result = VesselObject()
-key = b"documents/hello.txt"
-payload = b"Hello from Vessel!"
-info = ObjectInfo(b"hello.txt", b".txt", b"text/plain")
-check(vessel.vessel_init(b"my-store", c.byref(store)))
-try:
-    # Overwrite enabled, no compression, balanced compression level.
-    check(vessel.vessel_put(store, key, payload, len(payload), 1, info, 0, 1))
-    check(vessel.vessel_read(store, key, c.byref(result)))
-    print(c.string_at(result.data, result.length).decode("utf-8"))
-finally:
-    vessel.vessel_free_object(c.byref(result))
-    vessel.vessel_dispose(store)
+with VesselStorage("my-store") as store:
+    metadata = store.put(
+        "documents/hello.txt",
+        b"Hello from Vessel!",
+        overwrite=True,
+        info=ObjectInfo(file_name="hello.txt", extension=".txt", mime_type="text/plain"),
+    )
+    print(store.read(metadata.key).decode("utf-8"))
 ~~~
 
-Run `python hello.py <path-to-library>` using `vessel.dll`, `vessel.so` or `vessel.dylib` for your platform. The script prints `Hello from Vessel!` and creates `my-store` in the working directory.
+Run `python hello.py`. The program prints `Hello from Vessel!`.
 
-## Common tasks
+## Stream files
 
-- Encode string keys and file metadata with `.encode("utf-8")`. Pass payload bytes and an explicit length so binary data can contain zeros.
-- Use `vessel_stream_open` and `vessel_stream_read` to read large payloads into reusable buffers. Close the handle with `vessel_stream_close`.
-- See the [Python smoke test](../../../Tests/Vessel.Native.Tests/smoke.py) for callback uploads, prefix enumeration and deletion.
+Use `put_stream()` to upload from a binary file and `open()` to download in chunks. This example assumes `input.bin` exists in the working directory.
 
-The [Python API reference](../../ApiReferences/Python/README.md) covers type mappings and ownership. The [C ABI reference](../../ApiReferences/C/README.md) defines the functions, status codes and callback behavior.
+~~~python
+from shutil import copyfileobj
+
+from vessel import CompressionType, VesselStorage
+
+with VesselStorage("my-store") as store:
+    with open("input.bin", "rb") as source:
+        metadata = store.put_stream(
+            "archive/input.bin", source, overwrite=True, compression=CompressionType.ZSTD
+        )
+
+    with store.open(metadata.key) as source, open("output.bin", "wb") as destination:
+        copyfileobj(source, destination)
+~~~
+
+Uploads start at the input's current position. Use `read()` for objects up to 64 MiB and a stream for larger objects. Uncompressed streams support seeking. An open stream keeps its version if another operation overwrites or deletes the key.
+
+## List, inspect and delete objects
+
+- Use `store.keys("documents/")` to collect matching keys. An empty prefix collects all keys.
+- Use `store.get_metadata(key)` to inspect sizes, compression, hashes and file attributes without reading the payload.
+- Use `store.delete(key)` to remove an object. It returns `True` if it removed an object and `False` if the key was absent.
+
+See the [Python API reference](../../ApiReferences/Python/README.md) for method signatures, errors and resource lifetimes, and [storage behavior](../Storage.md) for persistence and concurrency.

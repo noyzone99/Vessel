@@ -9,7 +9,10 @@
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<PublishAot>true</PublishAot>
 		<NativeLib>Shared</NativeLib>
+		<InvariantGlobalization>true</InvariantGlobalization>
 		<AssemblyName>vessel</AssemblyName>
+		<NativeBinaryPrefix Condition="'$(OS)' != 'Windows_NT'">lib</NativeBinaryPrefix>
+		<SharedLibraryInstallName>@rpath/libvessel.dylib</SharedLibraryInstallName>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">

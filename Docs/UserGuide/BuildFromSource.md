@@ -13,22 +13,22 @@ dotnet pack Sources/Vessel.Core -c Release
 
 ## Platforms and architectures
 
-The platform matrix applies to the native library and language bindings that load it. The process that loads the library must match the binary's operating system, architecture and, on Linux, C library. The [native CI workflow](../../.github/workflows/validate.yml) is configured to build each target and run the C and Python smoke tests.
+The platform matrix applies to the native library and language bindings that load it. The process that loads the library must match the binary's operating system, architecture and, on Linux, C library. The [native CI workflow](../../.github/workflows/validate.yml) builds each target, runs the C and Python ABI smoke tests, and tests the Python wheel in a fresh virtual environment.
 
 | Platform | Architecture | .NET runtime identifier (RID) | Shared library | CI runner |
 | --- | --- | --- | --- | --- |
 | Windows | x64 | `win-x64` | `vessel.dll` | `windows-2022` |
 | Windows | ARM64 | `win-arm64` | `vessel.dll` | `windows-11-vs2026-arm` |
-| Linux (glibc) | x64 | `linux-x64` | `vessel.so` | `ubuntu-24.04` |
-| Linux (glibc) | ARM64 | `linux-arm64` | `vessel.so` | `ubuntu-24.04-arm` |
-| Linux (musl, e.g. Alpine) | x64 | `linux-musl-x64` | `vessel.so` | `ubuntu-24.04` with Alpine |
-| Linux (musl, e.g. Alpine) | ARM64 | `linux-musl-arm64` | `vessel.so` | `ubuntu-24.04-arm` with Alpine |
-| macOS (Intel) | x64 | `osx-x64` | `vessel.dylib` | `macos-15-intel` |
-| macOS (Apple Silicon) | ARM64 | `osx-arm64` | `vessel.dylib` | `macos-15` |
+| Linux (glibc) | x64 | `linux-x64` | `libvessel.so` | `ubuntu-24.04` |
+| Linux (glibc) | ARM64 | `linux-arm64` | `libvessel.so` | `ubuntu-24.04-arm` |
+| Linux (musl, e.g. Alpine) | x64 | `linux-musl-x64` | `libvessel.so` | `ubuntu-24.04` with Alpine |
+| Linux (musl, e.g. Alpine) | ARM64 | `linux-musl-arm64` | `libvessel.so` | `ubuntu-24.04-arm` with Alpine |
+| macOS (Intel) | x64 | `osx-x64` | `libvessel.dylib` | `macos-15-intel` |
+| macOS (Apple Silicon) | ARM64 | `osx-arm64` | `libvessel.dylib` | `macos-15` |
 
-After the smoke tests pass, CI uploads an artifact named `vessel-native-<RID>` containing the shared library and `vessel.h`. Windows artifacts also include the `vessel.lib` import library.
+After the smoke tests pass, CI uploads an artifact named `vessel-native-<platform>-<arch>-<version>` containing the shared library, `vessel.h` and the license. Linux names include the C library, as in `vessel-native-linux-musl-arm64-0.0.1-alpha.1`. Windows artifacts also include the `vessel.lib` import library. GitHub Releases carries the same files in ZIP archives.
 
-Linux glibc and musl builds produce separate binaries with the same filename. Choose the Linux build environment to match the oldest userspace you intend to support. When packaging Python wheels, use the `manylinux` or `musllinux` tag that matches the C library, minimum version and architecture verified for that wheel. [NativeAOT deployment](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/) · [Python platform tags](https://packaging.python.org/en/latest/specifications/platform-compatibility-tags/)
+Linux glibc and musl builds produce separate binaries with the same filename. Choose the build environment to match the oldest userspace you intend to support. The Python wheels target glibc 2.39 or newer, musl 1.2 or newer, and macOS 15 or newer for the corresponding platforms. CI checks Linux wheels with auditwheel and macOS wheels with delocate before installing and testing them. [NativeAOT deployment](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/) · [Python platform tags](https://packaging.python.org/en/latest/specifications/platform-compatibility-tags/)
 
 ## Build the shared library
 
@@ -56,7 +56,7 @@ $vesselRid = 'linux-musl-x64'
 $vesselOutput = (New-Item -ItemType Directory -Force "artifacts/native/$vesselRid").FullName
 $vesselBuild = @(
   'mkdir -p /build'
-  'tar -C /src --exclude=bin --exclude=obj -cf /tmp/vessel-src.tar global.json Sources/Vessel.Core Sources/Vessel.Native'
+  'tar -C /src --exclude=bin --exclude=obj -cf /tmp/vessel-src.tar global.json Directory.Build.props LICENSE Sources/Vessel.Core Sources/Vessel.Native'
   'tar -xf /tmp/vessel-src.tar -C /build'
   'cd /build'
   'dotnet publish Sources/Vessel.Native -c Release -r $VESSEL_RID -o /out'
@@ -84,9 +84,27 @@ The fixtures mix compressible and random data and include a subset of frequently
 
 ### Smoke tests
 
-The [C smoke test](../../Tests/Vessel.Native.Tests/smoke.c) exercises callback uploads, stream reads and ABI layout. The [Python smoke test](../../Tests/Vessel.Native.Tests/smoke.py) exercises the native library using `ctypes`, including process-exit recovery. Run the Python test with the path to a matching library. On Linux or macOS, `smoke.sh` builds the C client with Clang and runs both tests. The validation workflow includes the MSVC commands for Windows.
+The [C smoke test](../../Tests/Vessel.Native.Tests/smoke.c) exercises callback uploads, stream reads and ABI layout. The [raw Python smoke test](../../Tests/Vessel.Native.Tests/smoke.py) exercises the C ABI using `ctypes`, including process-exit recovery. On Linux or macOS, `smoke.sh` builds the C client with Clang and runs both ABI smoke tests and the Python package tests. The validation workflow includes the MSVC commands for Windows.
 
 ~~~sh
-python Tests/Vessel.Native.Tests/smoke.py /path/to/vessel.so
-sh Tests/Vessel.Native.Tests/smoke.sh /path/to/vessel.so
+python Tests/Vessel.Native.Tests/smoke.py /path/to/libvessel.so
+sh Tests/Vessel.Native.Tests/smoke.sh /path/to/libvessel.so
 ~~~
+
+To run only the Python package tests, [install the package](Python/README.md#setup), set `VESSEL_LIBRARY_PATH` to a matching shared library and run `python -m unittest discover -s Bindings/python/tests` from the repository root.
+
+### Build a Python wheel
+
+Run the wheel builder in an environment matching the native target. It installs its build tools in a temporary virtual environment and installs the resulting wheel in a separate virtual environment for testing. On Linux, install `patchelf` first. For Windows x64, after publishing the shared library, run the following command.
+
+~~~sh
+python .github/scripts/build_python_wheel.py win-x64 Sources/Vessel.Native/bin/Release/net10.0/win-x64/publish/vessel.dll artifacts/wheels
+~~~
+
+## Tagged releases
+
+Set the .NET and native version in [`Directory.Build.props`](../../Directory.Build.props) and its Python equivalent in [`pyproject.toml`](../../Bindings/python/pyproject.toml). For the first alpha, the version is `0.0.1-alpha.1` and the Python equivalent is `0.0.1a1`. The C ABI version is tracked separately in [`vessel.h`](../../Sources/Vessel.Native/vessel.h).
+
+A tag matching the configured version, such as `v0.0.1-alpha.1`, triggers the [release jobs](../../.github/workflows/validate.yml) after validation. The [GitHub Release](https://github.com/noyzone99/Vessel/releases) contains eight native C archives, the `Vessel.Core` NuGet package and eight `vessel-storage` wheels. Each wheel contains the native library for its target. PyPI receives those same wheels.
+
+Registry publication uses the `NUGET_API_KEY` secret in the `nuget` GitHub environment and a PyPI Trusted Publisher for `noyzone99/Vessel`, workflow `validate.yml` and environment `pypi`. The GitHub Release is available even if a registry needs its credentials configured. [NuGet publication](https://learn.microsoft.com/en-us/nuget/nuget-org/publish-a-package) · [PyPI Trusted Publishers](https://docs.pypi.org/trusted-publishers/adding-a-publisher/)

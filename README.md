@@ -33,7 +33,9 @@ using var reader = new StreamReader(content, Encoding.UTF8, leaveOpen: true);
 Console.WriteLine(await reader.ReadToEndAsync());
 ~~~
 
-Follow the [C# guide](Docs/UserGuide/CSharp/README.md) to set up a project, the [C guide](Docs/UserGuide/C/README.md) to link a native client, or the [Python guide](Docs/UserGuide/Python/README.md) to load Vessel with `ctypes`.
+Follow the [C# guide](Docs/UserGuide/CSharp/README.md) to set up a project, the [C guide](Docs/UserGuide/C/README.md) to link a native client, or the [Python guide](Docs/UserGuide/Python/README.md) to install `vessel-storage` with its bundled native library.
+
+For published versions, find the native C archives, NuGet package and Python wheels in [GitHub Releases](https://github.com/noyzone99/Vessel/releases). The [user guide](Docs/UserGuide/README.md) also links to NuGet.org and PyPI.
 
 ## Build from source
 

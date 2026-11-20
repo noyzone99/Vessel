@@ -10,7 +10,6 @@
 	</PropertyGroup>
 
 	<PropertyGroup>
-		<Version>0.0.1</Version>
 		<PackageId>Vessel.Core</PackageId>
 		<Product>Vessel.Core</Product>
 		<Authors>Erik Barale</Authors>

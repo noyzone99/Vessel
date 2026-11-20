@@ -2,7 +2,9 @@
 
 ## Setup
 
-Get `vessel.h` and a shared library for your target from the same build. Use a [native CI artifact](../BuildFromSource.md#platforms-and-architectures) or [publish from source](../BuildFromSource.md#build-the-shared-library). Match the host process's OS, architecture and Linux C library.
+Download the `vessel-native-<platform>-<arch>-<version>.zip` archive for your target from [GitHub Releases](https://github.com/noyzone99/Vessel/releases). Linux archive names include `glibc` or `musl` before the architecture. Extract the archive to get `vessel.h`, the shared library and the license. Windows archives also contain the `vessel.lib` import library.
+
+Before a release is published, use a [native CI artifact](../BuildFromSource.md#platforms-and-architectures) or [publish from source](../BuildFromSource.md#build-the-shared-library). Use the header and library from the same build. Match the process's OS, architecture and Linux C library.
 
 ## Write and read an object
 
@@ -47,22 +49,21 @@ int main(void)
 }
 ~~~
 
-On Windows, open a Developer PowerShell for the target architecture. Set `$publish` and `$import` to your build paths. If you downloaded a CI artifact, use its copy of `vessel.lib`.
+On Windows, open a Developer PowerShell for the target architecture. Set `$publish` to the extracted archive directory. When building from source, point `$import` at `vessel.lib` in the sibling `native/` directory.
 
 ~~~powershell
-$publish = 'C:\path\to\publish'
-$import = 'C:\path\to\native\vessel.lib'
+$publish = 'C:\path\to\vessel-native-windows-x64-0.0.1-alpha.1'
+$import = Join-Path $publish 'vessel.lib'
 cl.exe /nologo /std:c11 "/I$publish" hello.c $import /Fe:hello.exe
 $env:PATH = "$publish;$env:PATH"
 .\hello.exe
 ~~~
 
-On Linux or macOS, use the absolute path to the publish directory. Set the library filename to `vessel.dylib` on macOS.
+On Linux or macOS, set `publish` to the absolute path of the extracted archive or publish directory. Clang resolves `-lvessel` to `libvessel.so` on Linux and `libvessel.dylib` on macOS.
 
 ~~~sh
-publish=/absolute/path/to/publish
-library=vessel.so
-clang -std=c11 -I "$publish" hello.c "$publish/$library" "-Wl,-rpath,$publish" -o hello
+publish=/absolute/path/to/extracted-archive
+clang -std=c11 -I "$publish" hello.c -L "$publish" -lvessel "-Wl,-rpath,$publish" -o hello
 ./hello
 ~~~
 

@@ -1,40 +1,76 @@
 name: Validate Vessel
 
-on: [push, pull_request]
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
 
 permissions:
   contents: read
 
 jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      value: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Read and check the Vessel version
+        id: version
+        shell: bash
+        run: |
+          version=$(python3 -c 'import xml.etree.ElementTree as ET; print(ET.parse("Directory.Build.props").findtext("PropertyGroup/Version"))')
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Invalid Vessel version: $version" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match the Vessel version v$version" >&2
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
   validate:
+    needs: version
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-2022
             rid: win-x64
+            target: windows-x64
             library: vessel.dll
           - os: windows-11-vs2026-arm
             rid: win-arm64
+            target: windows-arm64
             library: vessel.dll
           - os: ubuntu-24.04
             rid: linux-x64
-            library: vessel.so
+            target: linux-glibc-x64
+            library: libvessel.so
           - os: ubuntu-24.04-arm
             rid: linux-arm64
-            library: vessel.so
+            target: linux-glibc-arm64
+            library: libvessel.so
           - os: ubuntu-24.04
             rid: linux-musl-x64
-            library: vessel.so
+            target: linux-musl-x64
+            library: libvessel.so
           - os: ubuntu-24.04-arm
             rid: linux-musl-arm64
-            library: vessel.so
+            target: linux-musl-arm64
+            library: libvessel.so
           - os: macos-15-intel
             rid: osx-x64
-            library: vessel.dylib
+            target: macos-x64
+            library: libvessel.dylib
           - os: macos-15
             rid: osx-arm64
-            library: vessel.dylib
+            target: macos-arm64
+            library: libvessel.dylib
     runs-on: ${{ matrix.os }}
     env:
       VESSEL_RID: ${{ matrix.rid }}
@@ -58,7 +94,7 @@ jobs:
         if: runner.os == 'Linux' && !contains(matrix.rid, '-musl-')
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang zlib1g-dev
+          sudo apt-get install -y clang patchelf zlib1g-dev
       - name: Build and test .NET
         if: matrix.rid == 'win-x64' || matrix.rid == 'linux-x64'
         run: |
@@ -76,6 +112,10 @@ jobs:
           $publish = (Resolve-Path (Join-Path $build 'publish')).Path
           $binary = Join-Path $publish $env:VESSEL_LIBRARY
           python Tests/Vessel.Native.Tests/smoke.py $binary
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:PYTHONPATH = (Resolve-Path 'Bindings/python/src').Path
+          $env:VESSEL_LIBRARY_PATH = $binary
+          python -m unittest discover -s Bindings/python/tests
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           $architecture = if ($env:RUNNER_ARCH -eq 'ARM64') { 'arm64' } else { 'amd64' }
@@ -106,20 +146,133 @@ jobs:
             --workdir /src \
             --env VESSEL_RID --env VESSEL_BUILD_DIR --env VESSEL_LIBRARY \
             mcr.microsoft.com/dotnet/sdk:10.0-alpine-aot sh -ec '
-              apk add --no-cache python3
+              apk add --no-cache python3 py3-pip patchelf
               dotnet publish Sources/Vessel.Native -c Release -r "$VESSEL_RID"
               sh Tests/Vessel.Native.Tests/smoke.sh "$VESSEL_BUILD_DIR/publish/$VESSEL_LIBRARY"
+              cp LICENSE "$VESSEL_BUILD_DIR/publish/"
+              python3 .github/scripts/build_python_wheel.py "$VESSEL_RID" "$VESSEL_BUILD_DIR/publish/$VESSEL_LIBRARY" artifacts/wheels
             '
+      - name: Build and test the bundled Python wheel
+        if: ${{ !contains(matrix.rid, '-musl-') }}
+        run: python .github/scripts/build_python_wheel.py ${{ matrix.rid }} "${{ env.VESSEL_BUILD_DIR }}/publish/${{ matrix.library }}" artifacts/wheels
+      - name: Upload the tested Python wheel
+        uses: actions/upload-artifact@v6
+        with:
+          name: vessel-wheel-${{ matrix.rid }}-${{ needs.version.outputs.value }}
+          path: artifacts/wheels/*.whl
+          if-no-files-found: error
+          overwrite: true
+      - name: Add the license to the native package
+        if: ${{ !contains(matrix.rid, '-musl-') }}
+        shell: pwsh
+        run: Copy-Item -LiteralPath LICENSE -Destination "$env:VESSEL_BUILD_DIR/publish/"
       - name: Upload the tested native library
         uses: actions/upload-artifact@v6
         with:
-          name: vessel-native-${{ matrix.rid }}
+          name: vessel-native-${{ matrix.target }}-${{ needs.version.outputs.value }}
           path: |
             ${{ env.VESSEL_BUILD_DIR }}/publish/${{ matrix.library }}
             ${{ env.VESSEL_BUILD_DIR }}/publish/vessel.h
             ${{ env.VESSEL_BUILD_DIR }}/publish/vessel.lib
+            ${{ env.VESSEL_BUILD_DIR }}/publish/LICENSE
           if-no-files-found: error
           overwrite: true
       - name: Run the quick benchmark profile
         if: matrix.rid == 'win-x64' || matrix.rid == 'linux-x64'
         run: dotnet run --project Tests/Vessel.Benchmark -c Release --no-build -- --quick
+      - name: Upload the NuGet package
+        if: github.ref_type == 'tag' && matrix.rid == 'win-x64'
+        uses: actions/upload-artifact@v6
+        with:
+          name: vessel-nuget-${{ needs.version.outputs.value }}
+          path: Sources/Vessel.Core/bin/Release/Packages/Vessel.Core.${{ needs.version.outputs.value }}.nupkg
+          if-no-files-found: error
+          overwrite: true
+
+  package-release:
+    if: github.ref_type == 'tag'
+    needs: [version, validate]
+    runs-on: ubuntu-24.04
+    env:
+      VESSEL_VERSION: ${{ needs.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: vessel-*
+          path: artifacts/ci
+      - name: Build and check release packages
+        shell: bash
+        run: |
+          mkdir -p artifacts/release
+          cp "artifacts/ci/vessel-nuget-$VESSEL_VERSION/Vessel.Core.$VESSEL_VERSION.nupkg" artifacts/release/
+          python -m pip install packaging
+          python .github/scripts/package-native-release.py artifacts/ci artifacts/release "$VESSEL_VERSION"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: vessel-release-${{ needs.version.outputs.value }}
+          path: artifacts/release/
+          if-no-files-found: error
+          overwrite: true
+
+  github-release:
+    needs: [version, package-release]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: vessel-release-${{ needs.version.outputs.value }}
+          path: artifacts/release
+      - name: Publish the GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          options=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then options+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" artifacts/release/* \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes "${options[@]}"
+
+  publish-nuget:
+    needs: [version, github-release]
+    runs-on: ubuntu-24.04
+    environment: nuget
+    steps:
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/download-artifact@v7
+        with:
+          name: vessel-nuget-${{ needs.version.outputs.value }}
+          path: artifacts/nuget
+      - name: Publish Vessel.Core to NuGet.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: dotnet nuget push artifacts/nuget/*.nupkg --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+  publish-pypi:
+    needs: [version, github-release]
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: vessel-release-${{ needs.version.outputs.value }}
+          path: artifacts/release
+      - name: Stage the Python wheels
+        run: |
+          mkdir -p dist
+          cp artifacts/release/*.whl dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true

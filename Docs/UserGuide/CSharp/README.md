@@ -2,13 +2,15 @@
 
 ## Setup
 
-Use `Vessel.Core` in a project targeting .NET 8 or .NET 10. The following commands use the repository checkout and the .NET 10 SDK. To consume Vessel from a separate checkout or build, [build the NuGet package and add it from a local source](../BuildFromSource.md#build-the-managed-library).
+Use `Vessel.Core` in a project targeting .NET 8 or .NET 10. For a published alpha, install the exact version from [NuGet.org](https://www.nuget.org/packages/Vessel.Core) or download the `.nupkg` from the matching [GitHub Release](https://github.com/noyzone99/Vessel/releases) and use its directory as a local NuGet source.
 
 ~~~sh
 dotnet new console -o artifacts/VesselQuickstart -f net10.0
-dotnet add artifacts/VesselQuickstart/VesselQuickstart.csproj reference Sources/Vessel.Core/Vessel.Core.csproj
+dotnet add artifacts/VesselQuickstart/VesselQuickstart.csproj package Vessel.Core --version 0.0.1-alpha.1
 cd artifacts/VesselQuickstart
 ~~~
+
+To try a version before publication, use a project reference to `Sources/Vessel.Core/Vessel.Core.csproj` or [build the NuGet package from source](../BuildFromSource.md#build-the-managed-library).
 
 ## Write and read an object
 

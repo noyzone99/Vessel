@@ -1,6 +1,6 @@
 # C ABI reference
 
-[`vessel.h`](../../../Sources/Vessel.Native/vessel.h) defines the complete signatures, field order and constant values. Use the header and shared library from the same build. Check `vessel_abi_version()` against `VESSEL_ABI_VERSION`, currently `1`. See the [C user guide](../../UserGuide/C/README.md) for build and linking examples.
+[`vessel.h`](../../../Sources/Vessel.Native/vessel.h) defines the complete signatures, field order and constant values. Use the header and shared library from the same native archive. Check `vessel_abi_version()` against `VESSEL_ABI_VERSION`, currently `1`. See the [C user guide](../../UserGuide/C/README.md) for release downloads and linking examples.
 
 ## Types and calling convention
 
