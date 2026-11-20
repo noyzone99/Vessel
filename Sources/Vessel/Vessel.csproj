@@ -20,8 +20,8 @@
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageIcon>Icon.png</PackageIcon>
 
-		<RepositoryUrl></RepositoryUrl>
-		<PackageProjectUrl></PackageProjectUrl>
+		<RepositoryUrl>https://github.com/noyzone99/Vessel</RepositoryUrl>
+		<PackageProjectUrl>https://github.com/noyzone99/Vessel</PackageProjectUrl>
 		<RepositoryType>git</RepositoryType>
 		<PublishRepositoryUrl>true</PublishRepositoryUrl>
 		<GenerateDependencyFile>false</GenerateDependencyFile>
