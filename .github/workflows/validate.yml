@@ -1,0 +1,125 @@
+name: Validate Vessel
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            rid: win-x64
+            library: vessel.dll
+          - os: windows-11-vs2026-arm
+            rid: win-arm64
+            library: vessel.dll
+          - os: ubuntu-24.04
+            rid: linux-x64
+            library: vessel.so
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            library: vessel.so
+          - os: ubuntu-24.04
+            rid: linux-musl-x64
+            library: vessel.so
+          - os: ubuntu-24.04-arm
+            rid: linux-musl-arm64
+            library: vessel.so
+          - os: macos-15-intel
+            rid: osx-x64
+            library: vessel.dylib
+          - os: macos-15
+            rid: osx-arm64
+            library: vessel.dylib
+    runs-on: ${{ matrix.os }}
+    env:
+      VESSEL_RID: ${{ matrix.rid }}
+      VESSEL_LIBRARY: ${{ matrix.library }}
+      VESSEL_BUILD_DIR: Sources/Vessel.Native/bin/Release/net10.0/${{ matrix.rid }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        if: ${{ !contains(matrix.rid, '-musl-') }}
+        with:
+          dotnet-version: 10.0.x
+          architecture: ${{ endsWith(matrix.rid, '-arm64') && 'arm64' || 'x64' }}
+      - uses: actions/setup-python@v6
+        if: ${{ !contains(matrix.rid, '-musl-') }}
+        with:
+          python-version: '3.13'
+          architecture: ${{ endsWith(matrix.rid, '-arm64') && 'arm64' || 'x64' }}
+      - name: Install Ubuntu NativeAOT prerequisites
+        if: runner.os == 'Linux' && !contains(matrix.rid, '-musl-')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang zlib1g-dev
+      - name: Build and test .NET
+        if: matrix.rid == 'win-x64' || matrix.rid == 'linux-x64'
+        run: |
+          dotnet build Vessel.slnx -c Release
+          dotnet test Tests/Vessel.Core.UnitTests -c Release --no-build
+          dotnet pack Sources/Vessel.Core -c Release --no-build -m:1
+      - name: Publish the native library
+        if: ${{ !contains(matrix.rid, '-musl-') }}
+        run: dotnet publish Sources/Vessel.Native -c Release -r ${{ matrix.rid }}
+      - name: Test C and Python clients on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $build = (Resolve-Path $env:VESSEL_BUILD_DIR).Path
+          $publish = (Resolve-Path (Join-Path $build 'publish')).Path
+          $binary = Join-Path $publish $env:VESSEL_LIBRARY
+          python Tests/Vessel.Native.Tests/smoke.py $binary
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $architecture = if ($env:RUNNER_ARCH -eq 'ARM64') { 'arm64' } else { 'amd64' }
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $visualStudio = & $vswhere -latest -products '*' -property installationPath
+          $devShell = Join-Path $visualStudio 'Common7/Tools/Launch-VsDevShell.ps1'
+          & $devShell -Arch $architecture -HostArch $architecture -SkipAutomaticLocation
+
+          $source = 'Tests/Vessel.Native.Tests/smoke.c'
+          $store = Join-Path $env:RUNNER_TEMP 'vessel-c-store'
+          $executable = Join-Path $env:RUNNER_TEMP 'vessel-c-smoke.exe'
+          $object = Join-Path $env:RUNNER_TEMP 'vessel-c-smoke.obj'
+          $import = Join-Path $build 'native/vessel.lib'
+          $env:PATH = $publish + [IO.Path]::PathSeparator + $env:PATH
+          cl.exe /nologo /std:c11 /W4 /WX "/I$publish" "/Fe$executable" "/Fo$object" $source $import
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $executable $store
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item -LiteralPath $import -Destination $publish
+      - name: Test C and Python clients on glibc and macOS
+        if: runner.os != 'Windows' && !contains(matrix.rid, '-musl-')
+        run: sh Tests/Vessel.Native.Tests/smoke.sh "$VESSEL_BUILD_DIR/publish/$VESSEL_LIBRARY"
+      - name: Build and test the musl library in Alpine
+        if: contains(matrix.rid, '-musl-')
+        run: |
+          docker run --rm \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/src" \
+            --workdir /src \
+            --env VESSEL_RID --env VESSEL_BUILD_DIR --env VESSEL_LIBRARY \
+            mcr.microsoft.com/dotnet/sdk:10.0-alpine-aot sh -ec '
+              apk add --no-cache python3
+              dotnet publish Sources/Vessel.Native -c Release -r "$VESSEL_RID"
+              sh Tests/Vessel.Native.Tests/smoke.sh "$VESSEL_BUILD_DIR/publish/$VESSEL_LIBRARY"
+            '
+      - name: Upload the tested native library
+        uses: actions/upload-artifact@v6
+        with:
+          name: vessel-native-${{ matrix.rid }}
+          path: |
+            ${{ env.VESSEL_BUILD_DIR }}/publish/${{ matrix.library }}
+            ${{ env.VESSEL_BUILD_DIR }}/publish/vessel.h
+            ${{ env.VESSEL_BUILD_DIR }}/publish/vessel.lib
+          if-no-files-found: error
+          overwrite: true
+      - name: Run the quick benchmark profile
+        if: matrix.rid == 'win-x64' || matrix.rid == 'linux-x64'
+        run: dotnet run --project Tests/Vessel.Benchmark -c Release --no-build -- --quick
