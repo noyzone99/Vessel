@@ -12,11 +12,11 @@ Vessel is designed to keep memory use predictable while streaming large objects 
 
 - **Stream large objects.** Read and write payloads incrementally. Look up metadata and list keys by prefix without opening payloads.
 - **Control disk usage.** Choose LZ4, Zstd or uncompressed storage for each object. Identical payloads written with the same codec share a blob.
-- **Embed the same engine across languages.** Use the managed library from .NET 8 or .NET 10, or load the NativeAOT shared library through its C ABI.
+- **Embed the same engine across languages.** Use the managed library from .NET 8, .NET 10 or .NET 11, or load the NativeAOT shared library through its C ABI.
 
 ## Getting started
 
-- [C#](Docs/UserGuide/CSharp/README.md) uses `Vessel.Core` on .NET 8 or .NET 10.
+- [C#](Docs/UserGuide/CSharp/README.md) uses `Vessel.Core` on .NET 8, .NET 10 or .NET 11.
 - [C](Docs/UserGuide/C/README.md) uses `vessel.h` and the native library.
 - [Python](Docs/UserGuide/Python/README.md) uses the `vessel-storage` wheel with its bundled native library.
 
@@ -24,7 +24,7 @@ For published versions, find the native C archives, NuGet package and Python whe
 
 ## Build from source
 
-Install the .NET 10 SDK selected by [`global.json`](global.json). Building the native library also requires the target platform's C/C++ toolchain. Use the Visual Studio **Desktop development with C++** workload on Windows, Clang and `zlib1g-dev` on Ubuntu, or the Xcode toolchain on macOS. The [source build guide](Docs/UserGuide/BuildFromSource.md#build-the-shared-library) also covers Alpine Linux and the supported runtime identifiers.
+Install the .NET 11 SDK selected by [`global.json`](global.json). Building the native library also requires the target platform's C/C++ toolchain. Use the Visual Studio **Desktop development with C++** workload on Windows, Clang and `zlib1g-dev` on Ubuntu, or the Xcode toolchain on macOS. The [source build guide](Docs/UserGuide/BuildFromSource.md#build-the-shared-library) also covers Alpine Linux and the supported runtime identifiers.
 
 Run `dotnet build Vessel.slnx -c Release` from the repository root to build the .NET solution. To build the packages and native library, follow the instructions for your language.
 

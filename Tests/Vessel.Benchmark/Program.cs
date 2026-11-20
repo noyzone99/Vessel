@@ -21,7 +21,7 @@ if (!full)
 {
     config.AddJob(Job.ShortRun
         .WithId("Quick")
-        .WithToolchain(InProcessNoEmitToolchain.Instance)
+        .WithToolchain(InProcessNoEmitToolchain.Default)
         .WithWarmupCount(1)
         .WithIterationCount(3)
         .WithInvocationCount(1)

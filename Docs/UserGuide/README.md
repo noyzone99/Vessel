@@ -2,7 +2,7 @@
 
 | Language | How to use Vessel | Guide |
 | --- | --- | --- |
-| C# | Managed `Vessel.Core` library on .NET 8 or .NET 10 | [C#](CSharp/README.md) |
+| C# | Managed `Vessel.Core` library on .NET 8, .NET 10 or .NET 11 | [C#](CSharp/README.md) |
 | C | NativeAOT shared library and C header | [C](C/README.md) |
 | Python | `vessel-storage` wheel with the native shared library included | [Python](Python/README.md) |
 

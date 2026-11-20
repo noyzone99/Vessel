@@ -75,7 +75,7 @@ jobs:
     env:
       VESSEL_RID: ${{ matrix.rid }}
       VESSEL_LIBRARY: ${{ matrix.library }}
-      VESSEL_BUILD_DIR: Sources/Vessel.Native/bin/Release/net10.0/${{ matrix.rid }}
+      VESSEL_BUILD_DIR: Sources/Vessel.Native/bin/Release/net11.0/${{ matrix.rid }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -83,7 +83,7 @@ jobs:
       - uses: actions/setup-dotnet@v6
         if: ${{ !contains(matrix.rid, '-musl-') }}
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
           architecture: ${{ endsWith(matrix.rid, '-arm64') && 'arm64' || 'x64' }}
       - uses: actions/setup-python@v6
         if: ${{ !contains(matrix.rid, '-musl-') }}
@@ -99,7 +99,7 @@ jobs:
         if: matrix.rid == 'win-x64' || matrix.rid == 'linux-x64'
         run: |
           dotnet build Vessel.slnx -c Release
-          dotnet test Tests/Vessel.Core.UnitTests -c Release --no-build
+          dotnet test --project Tests/Vessel.Core.UnitTests -c Release --no-build
           dotnet pack Sources/Vessel.Core -c Release --no-build -m:1
       - name: Publish the native library
         if: ${{ !contains(matrix.rid, '-musl-') }}
@@ -158,8 +158,8 @@ jobs:
             --mount "type=bind,source=$GITHUB_WORKSPACE,target=/src" \
             --workdir /src \
             --env VESSEL_RID --env VESSEL_BUILD_DIR --env VESSEL_LIBRARY \
-            mcr.microsoft.com/dotnet/sdk:10.0-alpine-aot sh -ec '
-              apk add --no-cache python3 py3-pip patchelf
+            mcr.microsoft.com/dotnet/sdk:11.0-alpine-aot sh -ec '
+              apk add --no-cache clang python3 py3-pip patchelf
               dotnet publish Sources/Vessel.Native -c Release -r "$VESSEL_RID"
               sh Tests/Vessel.Native.Tests/smoke.sh "$VESSEL_BUILD_DIR/publish/$VESSEL_LIBRARY"
               cp LICENSE "$VESSEL_BUILD_DIR/publish/"
@@ -268,7 +268,7 @@ jobs:
     steps:
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - uses: actions/download-artifact@v7
         with:
           name: vessel-nuget-${{ needs.version.outputs.value }}

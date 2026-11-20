@@ -1,6 +1,6 @@
 # Vessel.Core
 
-Vessel is an embedded object store for local filesystems. It stores named objects with optional file metadata, per-object LZ4 or Zstd compression, deduplication and prefix enumeration. The managed package supports .NET 8 and .NET 10.
+Vessel is an embedded object store for local filesystems. It stores named objects with optional file metadata, per-object LZ4 or Zstd compression, deduplication and prefix enumeration. The managed package supports .NET 8, .NET 10 and .NET 11.
 
 ~~~csharp
 using System.Text;

@@ -13,8 +13,8 @@ Vessel is an embedded object store for application-owned local filesystems. Keep
 
 | Interface | Target |
 | --- | --- |
-| Managed `Vessel.Core` | .NET 8 and .NET 10 |
-| Native `Vessel.Native` | .NET 10 NativeAOT shared library with a C ABI and experimental static archives for Windows x64 and Linux glibc x64 |
+| Managed `Vessel.Core` | .NET 8, .NET 10 and .NET 11 |
+| Native `Vessel.Native` | .NET 11 NativeAOT shared library with a C ABI and experimental static archives for Windows x64 and Linux glibc x64 |
 | Native platforms | Windows, Linux (glibc and musl) and macOS, each on x64 and ARM64 |
 | Language integration | C# through `Vessel.Core`, C through `vessel.h`, and Python through `vessel-storage` |
 

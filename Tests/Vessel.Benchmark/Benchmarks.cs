@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 
 namespace Vessel.Benchmark;
 
@@ -10,8 +9,8 @@ public class QuickBenchmarks : StorageBenchmarks
     public Task SetupAsync() => InitializeAsync(128, 4, null, null);
 }
 
-[SimpleJob(RuntimeMoniker.Net10_0, baseline: true)]
-[SimpleJob(RuntimeMoniker.NativeAot10_0)]
+[SimpleJob("net11.0", baseline: true)]
+[SimpleJob("nativeaot11.0")]
 public class FullBenchmarks : StorageBenchmarks
 {
     [Params(1024, 64 * 1024, 512 * 1024)]

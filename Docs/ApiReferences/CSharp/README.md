@@ -1,6 +1,6 @@
 # C# API reference
 
-`Vessel.Core` targets .NET 8 and .NET 10. Storage and data types are in the `Vessel` namespace. Logging types are in `Vessel.Logging`.
+`Vessel.Core` targets .NET 8, .NET 10 and .NET 11. Storage and data types are in the `Vessel` namespace. Logging types are in `Vessel.Logging`.
 
 ## `VesselStorage` and `IVesselStorage`
 

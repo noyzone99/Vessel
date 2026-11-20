@@ -1,6 +1,6 @@
 # Build Vessel from source
 
-Use the .NET 10 SDK selected by [`global.json`](../../global.json). Run the build commands from the repository root.
+Use the .NET 11 SDK selected by [`global.json`](../../global.json). Run the build commands from the repository root.
 
 ## Build the managed library
 
@@ -9,7 +9,7 @@ dotnet build Vessel.slnx -c Release
 dotnet pack Sources/Vessel.Core -c Release
 ~~~
 
-`Vessel.Core` targets .NET 8 and .NET 10. Use a project reference to develop against the checkout. To consume the package, add `Sources/Vessel.Core/bin/Release/Packages/` as a local NuGet source alongside your existing sources and install `Vessel.Core` from it.
+`Vessel.Core` targets .NET 8, .NET 10 and .NET 11. Use a project reference to develop against the checkout. To consume the package, add `Sources/Vessel.Core/bin/Release/Packages/` as a local NuGet source alongside your existing sources and install `Vessel.Core` from it.
 
 ## Platforms and architectures
 
@@ -26,6 +26,8 @@ The platform matrix applies to the native library and language bindings that loa
 | macOS (Intel) | x64 | `osx-x64` | `libvessel.dylib` | `macos-15-intel` |
 | macOS (Apple Silicon) | ARM64 | `osx-arm64` | `libvessel.dylib` | `macos-15` |
 
+.NET 11 NativeAOT requires an `x86-64-v2` CPU on x64 and LSE instructions on Windows ARM64. [Minimum hardware requirements](https://learn.microsoft.com/dotnet/core/whats-new/dotnet-11/runtime#updated-minimum-hardware-requirements)
+
 After the smoke tests pass, CI uploads the shared library as `vessel-native-dynamic-<platform>-<arch>-<version>` with `vessel.h` and the license. Linux names include the C library, as in `vessel-native-dynamic-linux-musl-arm64-0.0.1-alpha.1`. Windows dynamic artifacts also include the `vessel.lib` import library. GitHub Releases carries the same files in ZIP archives.
 
 CI also builds and tests experimental static artifacts named `vessel-native-static-windows-x64-<version>` and `vessel-native-static-linux-glibc-x64-<version>`. Each contains a static archive, the C header, linker options and license notices. See the [C linking instructions](C/README.md#link-an-experimental-static-library).
@@ -36,7 +38,7 @@ Linux glibc and musl builds produce separate binaries with the same filename. Ch
 
 Publish on a host or in a container matching the target OS. Install the native toolchain for the target architecture. Use the Visual Studio Desktop development with C++ workload on Windows, Clang and `zlib1g-dev` on Ubuntu, and the Xcode toolchain on macOS. Windows x64 can build Windows ARM64 with the Visual Studio ARM64 C++ tools. [NativeAOT prerequisites](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/#prerequisites) · [NativeAOT cross-compilation](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/cross-compile)
 
-For Alpine Linux, use the `10.0-alpine-aot` SDK container shown in the [Docker instructions](#build-linux-targets-from-windows-with-docker-desktop).
+For Alpine Linux, use the `11.0-alpine-aot` SDK container shown in the [Docker instructions](#build-linux-targets-from-windows-with-docker-desktop).
 
 Run one of these commands or substitute another RID from the matrix.
 
@@ -47,11 +49,11 @@ dotnet publish Sources/Vessel.Native -c Release -r linux-musl-x64
 dotnet publish Sources/Vessel.Native -c Release -r osx-arm64
 ~~~
 
-The default publish directory is `Sources/Vessel.Native/bin/Release/net10.0/<RID>/publish/`. It contains the shared library and [`vessel.h`](../../Sources/Vessel.Native/vessel.h). Windows source builds produce `vessel.lib` in the sibling `native/` directory.
+The default publish directory is `Sources/Vessel.Native/bin/Release/net11.0/<RID>/publish/`. It contains the shared library and [`vessel.h`](../../Sources/Vessel.Native/vessel.h). Windows source builds produce `vessel.lib` in the sibling `native/` directory.
 
 ### Build Linux targets from Windows with Docker Desktop
 
-Use Docker Desktop in Linux containers mode. The Microsoft `10.0-noble-aot` SDK image targets glibc and `10.0-alpine-aot` targets musl. Select `linux/amd64` for x64 or `linux/arm64` for ARM64. On a Windows x64 host, Docker Desktop can run the ARM64 container through emulation. [Microsoft .NET SDK images](https://github.com/dotnet/dotnet-docker/blob/main/README.sdk.md) · [Docker multi-platform builds](https://docs.docker.com/build/building/multi-platform/)
+Use Docker Desktop in Linux containers mode. The Microsoft `11.0-resolute-aot` SDK image targets glibc and `11.0-alpine-aot` targets musl. Select `linux/amd64` for x64 or `linux/arm64` for ARM64. On a Windows x64 host, Docker Desktop can run the ARM64 container through emulation. [Microsoft .NET SDK images](https://github.com/dotnet/dotnet-docker/blob/main/README.sdk.md) · [Docker multi-platform builds](https://docs.docker.com/build/building/multi-platform/)
 
 This PowerShell example builds `linux-musl-x64` from the repository root and writes the result to `artifacts/native/linux-musl-x64/`. The container copies the sources to its own working directory so its intermediate build files stay separate from the Windows build.
 
@@ -69,14 +71,14 @@ docker run --rm --platform linux/amd64 `
   --mount "type=bind,source=$($PWD.Path),target=/src,readonly" `
   --mount "type=bind,source=$vesselOutput,target=/out" `
   --env "VESSEL_RID=$vesselRid" `
-  mcr.microsoft.com/dotnet/sdk:10.0-alpine-aot sh -ec $vesselBuild
+  mcr.microsoft.com/dotnet/sdk:11.0-alpine-aot sh -ec $vesselBuild
 ~~~
 
-For Alpine ARM64, set `$vesselRid` to `linux-musl-arm64` and use `--platform linux/arm64`. For glibc, use `10.0-noble-aot` and the corresponding `linux-x64` or `linux-arm64` RID.
+For Alpine ARM64, set `$vesselRid` to `linux-musl-arm64` and use `--platform linux/arm64`. For glibc, use `11.0-resolute-aot` and the corresponding `linux-x64` or `linux-arm64` RID. For wheels targeting `manylinux_2_39`, build on Ubuntu 24.04 as CI does.
 
 ## Build a static library
 
-Run the static build on the matching x64 platform with Python 3.10 or later and the .NET 10 SDK. Use an x64 Developer PowerShell on Windows, or Clang and GNU binutils on Linux glibc. The build script links and runs the C smoke client and checks its dynamic dependencies before staging the package.
+Run the static build on the matching x64 platform with Python 3.10 or later and the .NET 11 SDK. Use an x64 Developer PowerShell on Windows, or Clang and GNU binutils on Linux glibc. The build script links and runs the C smoke client and checks its dynamic dependencies before staging the package.
 
 ~~~sh
 python .github/scripts/build_static_native.py win-x64 artifacts/native-static/windows-x64
@@ -90,7 +92,7 @@ Use Python 3.10 or later with `venv` and `pip`, and install `patchelf` on Linux.
 For Windows x64, run the following command from the repository root after publishing the shared library.
 
 ~~~sh
-python .github/scripts/build_python_wheel.py win-x64 Sources/Vessel.Native/bin/Release/net10.0/win-x64/publish/vessel.dll artifacts/wheels
+python .github/scripts/build_python_wheel.py win-x64 Sources/Vessel.Native/bin/Release/net11.0/win-x64/publish/vessel.dll artifacts/wheels
 ~~~
 
 For other targets, use the RID and shared library filename from the [platform matrix](#platforms-and-architectures). The script writes the wheel to `artifacts/wheels` in this example.
@@ -98,12 +100,12 @@ For other targets, use the RID and shared library filename from the [platform ma
 ## Tests and benchmarks
 
 ~~~sh
-dotnet test Tests/Vessel.Core.UnitTests -c Release
+dotnet test --project Tests/Vessel.Core.UnitTests -c Release
 dotnet run --project Tests/Vessel.Benchmark -c Release -- --quick
 dotnet run --project Tests/Vessel.Benchmark -c Release -- --full
 ~~~
 
-The default `--quick` profile covers reads, unique writes, overwrites and concurrent mixed traffic. `--full` runs the same scenarios across three payload sizes, three codecs, two worker counts and the .NET and NativeAOT runtimes. BenchmarkDotNet compiles the core into the NativeAOT benchmark process. The separately linked clients exercise the C ABI.
+The default `--quick` profile covers reads, unique writes, overwrites and concurrent mixed traffic. `--full` runs the same scenarios across three payload sizes, three codecs, two worker counts with the .NET 11 JIT and NativeAOT runtimes. BenchmarkDotNet compiles the core into the NativeAOT benchmark process. The separately linked clients exercise the C ABI.
 
 The fixtures mix compressible and random data and include a subset of frequently read keys. New writes use fresh payloads, and the write fixtures are cleaned between iterations. Results are reported per workload operation. A mixed churn operation includes a write and a delete. Set `VESSEL_BENCH_SEED` to an integer for a different reproducible workload. BenchmarkDotNet flags such as `--filter` work with both profiles.
 
