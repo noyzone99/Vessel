@@ -2,7 +2,7 @@ using Moq;
 using Vessel.Logging;
 using Vessel.Metadata;
 
-namespace Vessel.Core.UnitTests.Metadata;
+namespace Vessel.UnitTests.Metadata;
 
 public sealed class MetadataRepositoryTests : IDisposable
 {

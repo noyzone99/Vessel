@@ -10,8 +10,8 @@
 	</PropertyGroup>
 
 	<PropertyGroup>
-		<PackageId>Vessel.Core</PackageId>
-		<Product>Vessel.Core</Product>
+		<PackageId>VesselStorage</PackageId>
+		<Product>Vessel</Product>
 		<Authors>Erik Barale</Authors>
 		<Description>An Object Storage core library for .NET</Description>
 		<Copyright>Copyright (c) 2026 Erik Barale</Copyright>
@@ -41,8 +41,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <InternalsVisibleTo Include="Vessel.Core.UnitTests" />
-	  <InternalsVisibleTo Include="vessel" />
+	  <InternalsVisibleTo Include="Vessel.UnitTests" />
+	  <InternalsVisibleTo Include="Vessel.Native" />
 	</ItemGroup>
 
 </Project>

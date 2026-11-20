@@ -10,7 +10,6 @@
 		<PublishAot>true</PublishAot>
 		<NativeLib>Shared</NativeLib>
 		<InvariantGlobalization>true</InvariantGlobalization>
-		<AssemblyName>vessel</AssemblyName>
 		<NativeBinaryPrefix Condition="'$(OS)' != 'Windows_NT'">lib</NativeBinaryPrefix>
 		<SharedLibraryInstallName>@rpath/libvessel.dylib</SharedLibraryInstallName>
 	</PropertyGroup>
@@ -29,8 +28,19 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\Vessel.Core\Vessel.Core.csproj" />
+		<ProjectReference Include="..\Vessel\Vessel.csproj" />
 	</ItemGroup>
+
+	<!-- Keep the native library name distinct from the project assembly name during publish. -->
+	<Target Name="SetVesselNativeBinaryName" BeforeTargets="LinkNative">
+		<PropertyGroup>
+			<TargetName>vessel</TargetName>
+			<NativeBinary>$(NativeOutputPath)$(NativeBinaryPrefix)$(TargetName)$(NativeBinaryExt)</NativeBinary>
+			<NativeImportLibrary Condition="'$(NativeImportLibrary)' != ''">$(NativeOutputPath)$(NativeBinaryPrefix)$(TargetName)$(LibFileExt)</NativeImportLibrary>
+			<_LinkNativeOutputs>$(NativeBinary)</_LinkNativeOutputs>
+			<_LinkNativeOutputs Condition="'$(NativeImportLibrary)' != ''">$(NativeBinary);$(NativeImportLibrary)</_LinkNativeOutputs>
+		</PropertyGroup>
+	</Target>
 
 	<Target Name="WriteVesselStaticLinkInputs" AfterTargets="LinkNative"
 		Condition="'$(NativeLib)' == 'Static' and '$(VesselStaticLinkInputs)' != ''">

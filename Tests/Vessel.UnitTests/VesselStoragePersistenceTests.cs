@@ -2,7 +2,7 @@ using Moq;
 using System.Text;
 using Vessel.Logging;
 
-namespace Vessel.Core.UnitTests;
+namespace Vessel.UnitTests;
 
 /// <summary>
 /// Tests for VesselStorage persistence when switching metadata compression between runs. Verifies that the storage

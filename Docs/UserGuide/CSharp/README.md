@@ -2,15 +2,15 @@
 
 ## Setup
 
-Use `Vessel.Core` in a project targeting .NET 8, .NET 10 or .NET 11. For a published alpha, install the exact version from [NuGet.org](https://www.nuget.org/packages/Vessel.Core) or download the `.nupkg` from the matching [GitHub Release](https://github.com/noyzone99/Vessel/releases) and use its directory as a local NuGet source.
+Install `VesselStorage` in a project targeting .NET 8, .NET 10 or .NET 11. For a published alpha, install the exact version from [NuGet.org](https://www.nuget.org/packages/VesselStorage) or download the `.nupkg` from the matching [GitHub Release](https://github.com/noyzone99/Vessel/releases) and use its directory as a local NuGet source.
 
 ~~~sh
 dotnet new console -o artifacts/VesselQuickstart -f net11.0
-dotnet add artifacts/VesselQuickstart/VesselQuickstart.csproj package Vessel.Core --version 0.0.1-alpha.1
+dotnet add artifacts/VesselQuickstart/VesselQuickstart.csproj package VesselStorage --version 0.0.1-alpha.1
 cd artifacts/VesselQuickstart
 ~~~
 
-To try a version before publication, use a project reference to `Sources/Vessel.Core/Vessel.Core.csproj` or [build the NuGet package from source](../BuildFromSource.md#build-the-managed-library).
+To try a version before publication, use a project reference to `Sources/Vessel/Vessel.csproj` or [build the NuGet package from source](../BuildFromSource.md#build-the-managed-library).
 
 ## Write and read an object
 

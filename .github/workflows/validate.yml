@@ -99,8 +99,8 @@ jobs:
         if: matrix.rid == 'win-x64' || matrix.rid == 'linux-x64'
         run: |
           dotnet build Vessel.slnx -c Release
-          dotnet test --project Tests/Vessel.Core.UnitTests -c Release --no-build
-          dotnet pack Sources/Vessel.Core -c Release --no-build -m:1
+          dotnet test --project Tests/Vessel.UnitTests -c Release --no-build
+          dotnet pack Sources/Vessel -c Release --no-build -m:1
       - name: Publish the native library
         if: ${{ !contains(matrix.rid, '-musl-') }}
         run: dotnet publish Sources/Vessel.Native -c Release -r ${{ matrix.rid }}
@@ -206,7 +206,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: vessel-nuget-${{ needs.version.outputs.value }}
-          path: Sources/Vessel.Core/bin/Release/Packages/Vessel.Core.${{ needs.version.outputs.value }}.nupkg
+          path: Sources/Vessel/bin/Release/Packages/VesselStorage.${{ needs.version.outputs.value }}.nupkg
           if-no-files-found: error
           overwrite: true
 
@@ -231,7 +231,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts/release
-          cp "artifacts/ci/vessel-nuget-$VESSEL_VERSION/Vessel.Core.$VESSEL_VERSION.nupkg" artifacts/release/
+          cp "artifacts/ci/vessel-nuget-$VESSEL_VERSION/VesselStorage.$VESSEL_VERSION.nupkg" artifacts/release/
           python -m pip install packaging
           python .github/scripts/package-native-release.py artifacts/ci artifacts/release "$VESSEL_VERSION"
       - uses: actions/upload-artifact@v6
@@ -273,7 +273,7 @@ jobs:
         with:
           name: vessel-nuget-${{ needs.version.outputs.value }}
           path: artifacts/nuget
-      - name: Publish Vessel.Core to NuGet.org
+      - name: Publish VesselStorage to NuGet.org
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: dotnet nuget push artifacts/nuget/*.nupkg --source https://api.nuget.org/v3/index.json --skip-duplicate

@@ -16,7 +16,7 @@ Vessel is designed to keep memory use predictable while streaming large objects 
 
 ## Getting started
 
-- [C#](Docs/UserGuide/CSharp/README.md) uses `Vessel.Core` on .NET 8, .NET 10 or .NET 11.
+- [C#](Docs/UserGuide/CSharp/README.md) uses the `VesselStorage` NuGet package on .NET 8, .NET 10 or .NET 11.
 - [C](Docs/UserGuide/C/README.md) uses `vessel.h` and the native library.
 - [Python](Docs/UserGuide/Python/README.md) uses the `vessel-storage` wheel with its bundled native library.
 
@@ -28,7 +28,7 @@ Install the .NET 11 SDK selected by [`global.json`](global.json). Building the n
 
 Run `dotnet build Vessel.slnx -c Release` from the repository root to build the .NET solution. To build the packages and native library, follow the instructions for your language.
 
-- **C#** — [Build the `Vessel.Core` NuGet package](Docs/UserGuide/BuildFromSource.md#build-the-managed-library).
+- **C#** — [Build the `VesselStorage` NuGet package](Docs/UserGuide/BuildFromSource.md#build-the-managed-library).
 - **C** — [Publish the shared library](Docs/UserGuide/BuildFromSource.md#build-the-shared-library) or [build an experimental static library](Docs/UserGuide/BuildFromSource.md#build-a-static-library) with Python 3.10 or later.
 - **Python** — [Build a wheel from the shared library](Docs/UserGuide/BuildFromSource.md#build-a-python-wheel). This requires Python 3.10 or later with `venv` and `pip`, plus `patchelf` on Linux.
 

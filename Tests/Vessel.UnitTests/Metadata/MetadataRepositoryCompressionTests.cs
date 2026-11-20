@@ -2,7 +2,7 @@ using Moq;
 using Vessel.Logging;
 using Vessel.Metadata;
 
-namespace Vessel.Core.UnitTests.Metadata;
+namespace Vessel.UnitTests.Metadata;
 
 /// <summary>
 /// Tests for MetadataRepository with metadata compression enabled. Verifies that the repository works correctly when

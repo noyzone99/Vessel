@@ -6,17 +6,17 @@ Vessel is an embedded object store for application-owned local filesystems. Keep
 
 - **Performance.** Keep reads and writes stream-oriented. Avoid unnecessary allocations, copies, whole-object buffering and lock contention on hot paths. Measure changes with representative payloads, codecs and concurrency. Record the runtime, platform and workload when reporting benchmarks.
 - **Small footprint.** Keep the core in process and minimize dependencies, startup work and memory use. Keep language and application-framework integration outside the storage engine.
-- **Multilingual access.** Keep `Vessel.Core` idiomatic for .NET and NativeAOT-compatible. Treat `Sources/Vessel.Native/vessel.h` as the public interop contract. Preserve compatible signatures, struct layouts, status codes and ownership rules within an ABI version. Reuse the same engine when introducing language bindings.
+- **Multilingual access.** Keep `Vessel` idiomatic for .NET and NativeAOT-compatible. Treat `Sources/Vessel.Native/vessel.h` as the public interop contract. Preserve compatible signatures, struct layouts, status codes and ownership rules within an ABI version. Reuse the same engine when introducing language bindings.
 - **Storage reliability.** Preserve committed data across supported reopen and recovery scenarios. Check that performance changes preserve cancellation, overwrite and delete behavior, reader lifetimes and compatibility with existing stores.
 
 ## Targets
 
 | Interface | Target |
 | --- | --- |
-| Managed `Vessel.Core` | .NET 8, .NET 10 and .NET 11 |
+| Managed `Vessel` | .NET 8, .NET 10 and .NET 11 |
 | Native `Vessel.Native` | .NET 11 NativeAOT shared library with a C ABI and experimental static archives for Windows x64 and Linux glibc x64 |
 | Native platforms | Windows, Linux (glibc and musl) and macOS, each on x64 and ARM64 |
-| Language integration | C# through `Vessel.Core`, C through `vessel.h`, and Python through `vessel-storage` |
+| Language integration | C# through the `VesselStorage` NuGet package, C through `vessel.h`, and Python through `vessel-storage` |
 
 Use the project files and [validation workflow](.github/workflows/validate.yml) to verify framework targets and the native CI matrix. Java and Node.js bindings are planned. Describe roadmap items according to their implementation and validation status.
 
@@ -41,5 +41,5 @@ Docs/
 - Use `CSharp`, `C` and `Python` as the current language directory names. Add matching guide and reference directories when a new integration has a verifiable example and public API or interop contract. Add focused topic pages as needed and link them from the relevant `README.md`.
 - Start each language guide with prerequisites and setup, followed by a runnable write-and-read example, common tasks and links to its API reference and shared topics.
 - Organize each reference by public type or operation. Cover parameters and defaults, results and failures, resource ownership, concurrency and version or platform constraints where applicable. Document the native contract in the C reference and link to it from FFI references for shared behavior.
-- Keep the root README focused on what Vessel does, why it exists, a short example and how to build from source. Keep the NuGet package README in `Sources/Vessel.Core/Assets/README.md` because NuGet embeds it in the package.
+- Keep the root README focused on what Vessel does, why it exists, a short example and how to build from source. Keep the NuGet package README in `Sources/Vessel/Assets/README.md` because NuGet embeds it in the package.
 - Update the guides and references when changing public behavior, supported targets or build commands. Verify examples against the current source and tests. Keep the documentation indexes and cross-links current.

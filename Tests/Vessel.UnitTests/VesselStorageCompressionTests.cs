@@ -2,7 +2,7 @@ using Moq;
 using System.Text;
 using Vessel.Logging;
 
-namespace Vessel.Core.UnitTests;
+namespace Vessel.UnitTests;
 
 /// <summary>
 /// Tests for VesselStorage with metadata compression enabled. Verifies end-to-end storage functionality with compressed

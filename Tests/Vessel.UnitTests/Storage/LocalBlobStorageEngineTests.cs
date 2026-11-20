@@ -3,7 +3,7 @@ using System.Text;
 using Vessel.Logging;
 using Vessel.Storage;
 
-namespace Vessel.Core.UnitTests.Storage;
+namespace Vessel.UnitTests.Storage;
 
 public sealed class LocalBlobStorageEngineTests : IDisposable
 {

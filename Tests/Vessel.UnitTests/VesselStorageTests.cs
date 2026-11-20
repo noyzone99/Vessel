@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using Vessel.Logging;
 
-namespace Vessel.Core.UnitTests;
+namespace Vessel.UnitTests;
 
 public sealed class VesselStorageTests : IDisposable
 {

@@ -1,4 +1,4 @@
-﻿namespace Vessel.Core.UnitTests.Models;
+﻿namespace Vessel.UnitTests.Models;
 
 public class ObjectResponseTests
 {

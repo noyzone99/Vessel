@@ -6,10 +6,10 @@ Use the .NET 11 SDK selected by [`global.json`](../../global.json). Run the buil
 
 ~~~sh
 dotnet build Vessel.slnx -c Release
-dotnet pack Sources/Vessel.Core -c Release
+dotnet pack Sources/Vessel -c Release
 ~~~
 
-`Vessel.Core` targets .NET 8, .NET 10 and .NET 11. Use a project reference to develop against the checkout. To consume the package, add `Sources/Vessel.Core/bin/Release/Packages/` as a local NuGet source alongside your existing sources and install `Vessel.Core` from it.
+`Vessel` targets .NET 8, .NET 10 and .NET 11. Use a project reference to develop against the checkout. To consume the package, add `Sources/Vessel/bin/Release/Packages/` as a local NuGet source alongside your existing sources and install `VesselStorage` from it.
 
 ## Platforms and architectures
 
@@ -49,7 +49,7 @@ dotnet publish Sources/Vessel.Native -c Release -r linux-musl-x64
 dotnet publish Sources/Vessel.Native -c Release -r osx-arm64
 ~~~
 
-The default publish directory is `Sources/Vessel.Native/bin/Release/net11.0/<RID>/publish/`. It contains the shared library and [`vessel.h`](../../Sources/Vessel.Native/vessel.h). Windows source builds produce `vessel.lib` in the sibling `native/` directory.
+The default publish directory is `Sources/Vessel.Native/bin/Release/net11.0/<RID>/publish/`. It contains the shared library and [`vessel.h`](../../Sources/Vessel.Native/vessel.h). Windows source builds produce `vessel.lib` in the sibling `native/` directory. When an application uses both APIs on Windows, keep the native `vessel.dll` in a separate directory from the managed `Vessel.dll`.
 
 ### Build Linux targets from Windows with Docker Desktop
 
@@ -62,7 +62,7 @@ $vesselRid = 'linux-musl-x64'
 $vesselOutput = (New-Item -ItemType Directory -Force "artifacts/native/$vesselRid").FullName
 $vesselBuild = @(
   'mkdir -p /build'
-  'tar -C /src --exclude=bin --exclude=obj -cf /tmp/vessel-src.tar global.json Directory.Build.props LICENSE Sources/Vessel.Core Sources/Vessel.Native'
+  'tar -C /src --exclude=bin --exclude=obj -cf /tmp/vessel-src.tar global.json Directory.Build.props LICENSE Sources/Vessel Sources/Vessel.Native'
   'tar -xf /tmp/vessel-src.tar -C /build'
   'cd /build'
   'dotnet publish Sources/Vessel.Native -c Release -r $VESSEL_RID -o /out'
@@ -100,7 +100,7 @@ For other targets, use the RID and shared library filename from the [platform ma
 ## Tests and benchmarks
 
 ~~~sh
-dotnet test --project Tests/Vessel.Core.UnitTests -c Release
+dotnet test --project Tests/Vessel.UnitTests -c Release
 dotnet run --project Tests/Vessel.Benchmark -c Release -- --quick
 dotnet run --project Tests/Vessel.Benchmark -c Release -- --full
 ~~~
@@ -124,6 +124,6 @@ To run only the Python package tests, [install the package](Python/README.md#set
 
 Set the .NET and native version in [`Directory.Build.props`](../../Directory.Build.props) and its Python equivalent in [`pyproject.toml`](../../Bindings/python/pyproject.toml). For the first alpha, the version is `0.0.1-alpha.1` and the Python equivalent is `0.0.1a1`. The C ABI version is tracked separately in [`vessel.h`](../../Sources/Vessel.Native/vessel.h).
 
-A tag matching the configured version, such as `v0.0.1-alpha.1`, triggers the [release jobs](../../.github/workflows/validate.yml) after validation. The [GitHub Release](https://github.com/noyzone99/Vessel/releases) contains eight dynamic and two experimental static C archives, the `Vessel.Core` NuGet package and eight `vessel-storage` wheels. Each wheel contains the shared library for its target. PyPI receives those same wheels.
+A tag matching the configured version, such as `v0.0.1-alpha.1`, triggers the [release jobs](../../.github/workflows/validate.yml) after validation. The [GitHub Release](https://github.com/noyzone99/Vessel/releases) contains eight dynamic and two experimental static C archives, the `VesselStorage` NuGet package and eight `vessel-storage` wheels. Each wheel contains the shared library for its target. PyPI receives those same wheels.
 
 Registry publication uses the `NUGET_API_KEY` secret in the `nuget` GitHub environment and a PyPI Trusted Publisher for `noyzone99/Vessel`, workflow `validate.yml` and environment `pypi`. The GitHub Release is available even if a registry needs its credentials configured. [NuGet publication](https://learn.microsoft.com/en-us/nuget/nuget-org/publish-a-package) · [PyPI Trusted Publishers](https://docs.pypi.org/trusted-publishers/adding-a-publisher/)

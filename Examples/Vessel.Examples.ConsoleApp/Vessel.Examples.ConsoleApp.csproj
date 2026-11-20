@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Sources\Vessel.Core\Vessel.Core.csproj" />
+    <ProjectReference Include="..\..\Sources\Vessel\Vessel.csproj" />
   </ItemGroup>
 
 </Project>

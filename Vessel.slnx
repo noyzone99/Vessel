@@ -8,11 +8,11 @@
     <Project Path="Examples/Vessel.Examples.ConsoleApp/Vessel.Examples.ConsoleApp.csproj" />
   </Folder>
   <Folder Name="/Sources/">
-    <Project Path="Sources/Vessel.Core/Vessel.Core.csproj" />
+    <Project Path="Sources/Vessel/Vessel.csproj" />
     <Project Path="Sources/Vessel.Native/Vessel.Native.csproj" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Tests/Vessel.Benchmark/Vessel.Benchmark.csproj" Id="13c9fa6e-8bda-4ad3-a94c-87ff51c76f5d" />
-    <Project Path="Tests/Vessel.Core.UnitTests/Vessel.Core.UnitTests.csproj" />
+    <Project Path="Tests/Vessel.UnitTests/Vessel.UnitTests.csproj" />
   </Folder>
 </Solution>

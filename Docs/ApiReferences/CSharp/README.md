@@ -1,10 +1,10 @@
 # C# API reference
 
-`Vessel.Core` targets .NET 8, .NET 10 and .NET 11. Storage and data types are in the `Vessel` namespace. Logging types are in `Vessel.Logging`.
+`Vessel` targets .NET 8, .NET 10 and .NET 11. Storage and data types are in the `Vessel` namespace. Logging types are in `Vessel.Logging`.
 
 ## `VesselStorage` and `IVesselStorage`
 
-The [public interface](../../../Sources/Vessel.Core/IVesselStorage.cs) defines the operations below. [`VesselStorage`](../../../Sources/Vessel.Core/VesselStorage.cs) implements them for a local directory.
+The [public interface](../../../Sources/Vessel/IVesselStorage.cs) defines the operations below. [`VesselStorage`](../../../Sources/Vessel/VesselStorage.cs) implements them for a local directory.
 
 | Member | Inputs, result and common failures |
 | --- | --- |
@@ -20,17 +20,17 @@ The [public interface](../../../Sources/Vessel.Core/IVesselStorage.cs) defines t
 
 ## `VesselStream`
 
-[`VesselStream`](../../../Sources/Vessel.Core/VesselStream.cs) extends `Stream` and exposes `Metadata`, `Checksum`, `FileName`, `Extension` and `MimeType` for the opened version. `Length` is the uncompressed byte count. Check `CanSeek` before accessing `Position` or calling `Seek`. Compressed streams throw `NotSupportedException` for these operations. Use `Dispose` or `DisposeAsync` to close the reader. Use separate streams for independent read positions.
+[`VesselStream`](../../../Sources/Vessel/VesselStream.cs) extends `Stream` and exposes `Metadata`, `Checksum`, `FileName`, `Extension` and `MimeType` for the opened version. `Length` is the uncompressed byte count. Check `CanSeek` before accessing `Position` or calling `Seek`. Compressed streams throw `NotSupportedException` for these operations. Use `Dispose` or `DisposeAsync` to close the reader. Use separate streams for independent read positions.
 
 ## Data and options
 
 | Type | Contract |
 | --- | --- |
-| [`ObjectInfo`](../../../Sources/Vessel.Core/ObjectInfo.cs) | Optional `FileName`, `Extension` and `MimeType` values supplied by the caller. |
-| [`ObjectMetadata`](../../../Sources/Vessel.Core/ObjectMetadata.cs) | `Key`, physical `Hash`, logical `ContentHash`, `ETag`, `OriginalSize`, `CompressedSize`, `CompressionType`, UTC `CreationDate` and optional file attributes. `CreationDate` is set when the object is written or replaced. |
-| [`CompressionType`](../../../Sources/Vessel.Core/CompressionType.cs) | `None`, `Zstd` or `LZ4`. |
-| [`CompressionLevel`](../../../Sources/Vessel.Core/CompressionLevel.cs) | `Fastest`, `Balanced`, `High` or `Ultra`. The selected codec determines the speed and compression trade-off. |
-| [`VesselStorageOptions`](../../../Sources/Vessel.Core/VesselStorageOptions.cs) | `EnableMetadataCompression` defaults to `false`. `Logger` defaults to `null`. |
-| [`IVesselLogger`](../../../Sources/Vessel.Core/Logging/IVesselLogger.cs) | Implements `Log(VesselLogLevel level, string message, Exception? exception = null)`. Levels are `Debug`, `Information`, `Warning` and `Error`. A shared logger should support concurrent calls. |
+| [`ObjectInfo`](../../../Sources/Vessel/ObjectInfo.cs) | Optional `FileName`, `Extension` and `MimeType` values supplied by the caller. |
+| [`ObjectMetadata`](../../../Sources/Vessel/ObjectMetadata.cs) | `Key`, physical `Hash`, logical `ContentHash`, `ETag`, `OriginalSize`, `CompressedSize`, `CompressionType`, UTC `CreationDate` and optional file attributes. `CreationDate` is set when the object is written or replaced. |
+| [`CompressionType`](../../../Sources/Vessel/CompressionType.cs) | `None`, `Zstd` or `LZ4`. |
+| [`CompressionLevel`](../../../Sources/Vessel/CompressionLevel.cs) | `Fastest`, `Balanced`, `High` or `Ultra`. The selected codec determines the speed and compression trade-off. |
+| [`VesselStorageOptions`](../../../Sources/Vessel/VesselStorageOptions.cs) | `EnableMetadataCompression` defaults to `false`. `Logger` defaults to `null`. |
+| [`IVesselLogger`](../../../Sources/Vessel/Logging/IVesselLogger.cs) | Implements `Log(VesselLogLevel level, string message, Exception? exception = null)`. Levels are `Debug`, `Information`, `Warning` and `Error`. A shared logger should support concurrent calls. |
 
 See the [C# user guide](../../UserGuide/CSharp/README.md) for setup and examples, and [storage behavior](../../UserGuide/Storage.md) for lifetime and recovery details.
