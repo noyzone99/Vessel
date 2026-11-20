@@ -35,7 +35,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
         Assert.NotNull(repository);
-        Assert.True(Directory.Exists(Path.Combine(_testStoragePath, "metadata")));
+        Assert.True(Directory.Exists(Path.Combine(_testStoragePath, "metadata-v1")));
     }
 
     [Fact]
@@ -62,7 +62,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         using var repository = new MetadataRepository(_testStoragePath, false);
 
         Assert.NotNull(repository);
-        Assert.True(Directory.Exists(Path.Combine(_testStoragePath, "metadata")));
+        Assert.True(Directory.Exists(Path.Combine(_testStoragePath, "metadata-v1")));
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         using var repository = new MetadataRepository(relativePath, false, _mockLogger.Object);
 
         Assert.NotNull(repository);
-        Assert.True(Directory.Exists(Path.Combine(Path.GetFullPath(relativePath), "metadata")));
+        Assert.True(Directory.Exists(Path.Combine(Path.GetFullPath(relativePath), "metadata-v1")));
     }
 
     [Fact]
@@ -338,6 +338,31 @@ public sealed class MetadataRepositoryTests : IDisposable
         var result = repository.IsHashReferenced("shared-hash");
 
         Assert.True(result);
+    }
+
+    [Fact]
+    public async Task ConcurrentReferences_ToSameHash_KeepSurvivingReference()
+    {
+        using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
+        const int keyCount = 100;
+        const string hash = "shared-concurrent-hash";
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var writes = Enumerable.Range(0, keyCount).Select(async i =>
+        {
+            await start.Task;
+            repository.Upsert(CreateTestMetadata($"shared-key-{i}", hash));
+        }).ToArray();
+
+        start.SetResult();
+        await Task.WhenAll(writes);
+
+        for (int i = 0; i < keyCount - 1; i++)
+        {
+            Assert.True(repository.Delete($"shared-key-{i}"));
+        }
+
+        Assert.True(repository.IsHashReferenced(hash));
+        Assert.NotNull(repository.Get($"shared-key-{keyCount - 1}"));
     }
 
     [Fact]

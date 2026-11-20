@@ -1,8 +1,8 @@
 using K4os.Compression.LZ4;
 using K4os.Compression.LZ4.Streams;
 using System.Buffers;
+using System.Diagnostics;
 using System.Security.Cryptography;
-using System.Threading.Channels;
 using Vessel.Logging;
 using ZstdSharp;
 
@@ -16,9 +16,6 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
     private const int BufferSize = 64 * 1024;
     private readonly string _blobsPath;
     private readonly string _tmpPath;
-    private readonly Channel<string> _deleteChannel;
-    private readonly Task _deleteWorker;
-    private readonly CancellationTokenSource _cts = new();
     private readonly IVesselLogger? _logger;
     private int _disposed;
 
@@ -40,232 +37,122 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         Directory.CreateDirectory(_blobsPath);
         Directory.CreateDirectory(_tmpPath);
 
-        _deleteChannel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
-        {
-            SingleReader = true,
-            AllowSynchronousContinuations = true
-        });
-
-        _deleteWorker = Task.Run(ProcessDeletionsAsync);
-
         _logger?.Log(VesselLogLevel.Information, $"Initialized blob storage at '{rootPath}'.");
-    }
-
-    /// <summary>
-    /// Processes queued blob deletion requests from the background worker.
-    /// </summary>
-    private async Task ProcessDeletionsAsync()
-    {
-        await foreach (var hash in _deleteChannel.Reader.ReadAllAsync(_cts.Token))
-        {
-            try
-            {
-                var path = GetBlobPath(hash);
-                TryDeleteFile(path);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                _logger?.Log(VesselLogLevel.Error, $"Background delete failed for {hash}: {ex.Message}");
-            }
-        }
     }
 
     /// <inheritdoc/>
     public async Task<BlobInfo> WriteBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
     {
+        using var staged = await StageBlobAsync(inputStream, compressionType, compressionLevel, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return PublishBlob(staged);
+    }
+
+    public async Task<StagedBlob> StageBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
+    {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(inputStream);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)compressionType, (uint)CompressionType.LZ4);
+        cancellationToken.ThrowIfCancellationRequested();
 
-        if (inputStream.CanSeek && inputStream.Length <= BufferSize)
-        {
-            return await WriteSmallBlobAsync(inputStream, compressionType, compressionLevel, cancellationToken).ConfigureAwait(false);
-        }
-
-        return await WriteLargeBlobAsync(inputStream, compressionType, compressionLevel, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Writes a small payload directly to disk after optionally compressing it.
-    /// </summary>
-    /// <param name="inputStream">The readable source stream that contains the payload bytes.</param>
-    /// <param name="compressionType">The compression codec to apply to the payload.</param>
-    /// <param name="compressionLevel">The desired compression strength for the selected codec.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
-    /// <returns>Metadata describing the resulting blob file and its effective storage size.</returns>
-    private async Task<BlobInfo> WriteSmallBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
-    {
-        int originalSize = (int)inputStream.Length;
-        byte[] sourceBuffer = ArrayPool<byte>.Shared.Rent(originalSize);
-        byte[]? compressedBuffer = null;
-
-        try
-        {
-            Memory<byte> sourceMemory = sourceBuffer.AsMemory(0, originalSize);
-            await inputStream.ReadExactlyAsync(sourceMemory, cancellationToken).ConfigureAwait(false);
-
-            string hash;
-            {
-                Span<byte> hashBytes = stackalloc byte[32];
-                SHA256.HashData(sourceMemory.Span, hashBytes);
-#if NET10_0_OR_GREATER
-                hash = Convert.ToHexStringLower(hashBytes);
-#else
-                hash = ToLowerHexString(hashBytes);
-#endif
-                var blobIdentifier = GetBlobIdentifier(hash, compressionType);
-                var destinationPath = GetBlobPath(blobIdentifier);
-
-                if (File.Exists(destinationPath))
-                {
-                    return new BlobInfo(blobIdentifier, originalSize, new FileInfo(destinationPath).Length);
-                }
-
-                ReadOnlyMemory<byte> dataToWrite;
-
-                if (compressionType == CompressionType.None)
-                {
-                    dataToWrite = sourceMemory;
-                }
-                else
-                {
-                    compressedBuffer = ArrayPool<byte>.Shared.Rent(originalSize + 1024);
-                    int compressedSize = CompressBuffer(sourceMemory.Span, compressedBuffer, compressionType, compressionLevel);
-                    dataToWrite = compressedBuffer.AsMemory(0, compressedSize);
-                }
-
-                var tempFilePath = GetTempFilePath();
-                try
-                {
-#if NET10_0_OR_GREATER
-                    await File.WriteAllBytesAsync(tempFilePath, dataToWrite, cancellationToken).ConfigureAwait(false);
-                    var dir = Path.GetDirectoryName(destinationPath)!;
-                    Directory.CreateDirectory(dir);
-#else
-                    await using (var fs = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 1, FileOptions.Asynchronous))
-                    {
-                        await fs.WriteAsync(dataToWrite, cancellationToken).ConfigureAwait(false);
-                    }
-
-                    var dir = Path.GetDirectoryName(destinationPath)!;
-                    Directory.CreateDirectory(dir);
-#endif
-                    File.Move(tempFilePath, destinationPath, overwrite: false);
-                }
-                catch (IOException) when (File.Exists(destinationPath)) { }
-                finally { TryDeleteFile(tempFilePath); }
-
-                return new BlobInfo(blobIdentifier, originalSize, dataToWrite.Length);
-            }
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(sourceBuffer);
-            if (compressedBuffer != null) ArrayPool<byte>.Shared.Return(compressedBuffer);
-        }
-    }
-
-    /// <summary>
-    /// Writes a large payload to a temporary file and then atomically moves it into the final blob location.
-    /// </summary>
-    /// <param name="inputStream">The readable source stream that contains the payload bytes.</param>
-    /// <param name="compressionType">The compression codec to apply to the payload.</param>
-    /// <param name="compressionLevel">The desired compression strength for the selected codec.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
-    /// <returns>Metadata describing the resulting blob file and its effective storage size.</returns>
-    private async Task<BlobInfo> WriteLargeBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
-    {
-        var tempFilePath = GetTempFilePath();
-        using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var tempPath = GetTempFilePath();
+        var file = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, BufferSize, FileOptions.Asynchronous);
         var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-        long originalSize = 0;
-        long compressedSize;
-
         try
         {
-            await using (var fileDestination = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, BufferSize, FileOptions.Asynchronous))
-            {
-                Stream targetStream = WrapStream(fileDestination, compressionType, compressionLevel);
-                try
-                {
-                    int bytesRead;
-                    var memoryBuffer = buffer.AsMemory(0, BufferSize);
-
-                    while ((bytesRead = await inputStream.ReadAsync(memoryBuffer, cancellationToken).ConfigureAwait(false)) > 0)
-                    {
-                        originalSize += bytesRead;
-                        hasher.AppendData(buffer.AsSpan(0, bytesRead));
-                        await targetStream.WriteAsync(memoryBuffer[..bytesRead], cancellationToken).ConfigureAwait(false);
-                    }
-
-                    await targetStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                }
-                finally
-                {
-                    if (targetStream != fileDestination)
-                        await targetStream.DisposeAsync().ConfigureAwait(false);
-                }
-
-                compressedSize = fileDestination.Length;
-            }
-
-            Span<byte> hashBytes = stackalloc byte[32];
-            hasher.GetHashAndReset(hashBytes);
-#if NET10_0_OR_GREATER
-            string hash = Convert.ToHexStringLower(hashBytes);
-#else
-            string hash = ToLowerHexString(hashBytes);
-#endif
-            var blobIdentifier = GetBlobIdentifier(hash, compressionType);
-
-            var destinationPath = GetBlobPath(blobIdentifier);
-            if (File.Exists(destinationPath))
-            {
-                TryDeleteFile(tempFilePath);
-                return new BlobInfo(blobIdentifier, originalSize, new FileInfo(destinationPath).Length);
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+            using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            var target = WrapStream(file, compressionType, compressionLevel);
+            long originalSize = 0;
             try
             {
-                File.Move(tempFilePath, destinationPath, overwrite: false);
+                var memory = buffer.AsMemory(0, BufferSize);
+                int bytesRead;
+                while ((bytesRead = await inputStream.ReadAsync(memory, cancellationToken).ConfigureAwait(false)) != 0)
+                {
+                    checked { originalSize += bytesRead; }
+                    hasher.AppendData(memory.Span[..bytesRead]);
+                    await target.WriteAsync(memory[..bytesRead], cancellationToken).ConfigureAwait(false);
+                }
             }
-            catch (IOException) when (File.Exists(destinationPath))
+            finally
             {
-                TryDeleteFile(tempFilePath);
+                if (target != file)
+                    await target.DisposeAsync().ConfigureAwait(false);
             }
 
-            return new BlobInfo(blobIdentifier, originalSize, compressedSize);
+            Span<byte> digest = stackalloc byte[32];
+            hasher.GetHashAndReset(digest);
+#if NET10_0_OR_GREATER
+            var hash = Convert.ToHexStringLower(digest);
+#else
+            var hash = ToLowerHexString(digest);
+#endif
+            return new StagedBlob(tempPath, file, new BlobInfo(GetBlobIdentifier(hash, compressionType), originalSize, file.Position));
+        }
+        catch
+        {
+            try { await file.DisposeAsync().ConfigureAwait(false); }
+            finally { TryDeleteFile(tempPath); }
+            throw;
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(buffer);
-            TryDeleteFile(tempFilePath);
+        }
+    }
+
+    // The caller holds the blob's lock across publication and the metadata commit.
+    public BlobInfo PublishBlob(StagedBlob staged)
+    {
+        ThrowIfDisposed();
+        var path = GetBlobPath(staged.Info.Hash);
+        var existing = new FileInfo(path);
+        if (existing.Exists)
+            return staged.Info with { CompressedSize = existing.Length };
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        staged.FlushAndClose();
+        try
+        {
+            File.Move(staged.Path, path);
+            return staged.Info;
+        }
+        catch (IOException) when (File.Exists(path))
+        {
+            return staged.Info with { CompressedSize = new FileInfo(path).Length };
         }
     }
 
     /// <inheritdoc/>
-    public Stream OpenBlobRead(string hash, CompressionType compressionType)
+    public Stream OpenBlobRead(string hash, CompressionType compressionType, long? expectedSize = null)
     {
         ThrowIfDisposed();
         var path = GetBlobPath(hash);
-        var fileSource = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+        var fileSource = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete,
             BufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
 
-        return compressionType switch
+        try
         {
-            CompressionType.Zstd => new DecompressionStream(fileSource, bufferSize: BufferSize, leaveOpen: false),
-            CompressionType.LZ4 => LZ4Stream.Decode(fileSource, leaveOpen: false),
-            CompressionType.None => fileSource,
-            _ => throw new ArgumentOutOfRangeException(nameof(compressionType))
-        };
+            if (expectedSize is long size && fileSource.Length != size)
+                throw new InvalidDataException($"Blob '{hash}' has an unexpected stored length.");
+
+            return compressionType switch
+            {
+                CompressionType.Zstd => new DecompressionStream(fileSource, bufferSize: BufferSize, leaveOpen: false),
+                CompressionType.LZ4 => LZ4Stream.Decode(fileSource, leaveOpen: false),
+                CompressionType.None => fileSource,
+                _ => throw new ArgumentOutOfRangeException(nameof(compressionType))
+            };
+        }
+        catch
+        {
+            fileSource.Dispose();
+            throw;
+        }
     }
 
     /// <inheritdoc/>
-    public void QueueDeleteBlob(string hash)
+    public void DeleteBlob(string hash)
     {
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(hash);
@@ -275,7 +162,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
             throw new ArgumentException("Blob hash must contain at least 4 characters.", nameof(hash));
         }
 
-        _deleteChannel.Writer.TryWrite(hash);
+        TryDeleteFile(GetBlobPath(hash));
     }
 
     /// <inheritdoc/>
@@ -290,42 +177,26 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         }
     }
 
-    /// <summary>
-    /// Compresses the supplied bytes with the requested codec and compression level.
-    /// </summary>
-    /// <param name="source">The uncompressed source bytes.</param>
-    /// <param name="destination">The buffer that receives the compressed bytes.</param>
-    /// <param name="type">The compression codec to use.</param>
-    /// <param name="level">The requested compression strength.</param>
-    /// <returns>The number of compressed bytes written into the destination buffer.</returns>
-    private static int CompressBuffer(ReadOnlySpan<byte> source, byte[] destination, CompressionType type, CompressionLevel level)
+    public void CleanupUnreferencedBlobs(Func<string, bool> isReferenced)
     {
-        if (type == CompressionType.Zstd)
+        var options = new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 2, AttributesToSkip = FileAttributes.ReparsePoint };
+        foreach (var path in Directory.EnumerateFiles(_blobsPath, "*.blob", options))
         {
-            using var compressor = new Compressor(GetZstdLevel(level));
-            return compressor.Wrap(source, destination);
+            var hash = Path.GetFileNameWithoutExtension(path);
+            if (IsBlobIdentifier(hash) && path.Equals(GetBlobPath(hash), StringComparison.Ordinal) && !isReferenced(hash))
+                TryDeleteFile(path);
         }
-
-        if (type == CompressionType.LZ4)
-        {
-            using var memStream = new MemoryStream(destination);
-            using (var lz4Stream = LZ4Stream.Encode(memStream, new LZ4EncoderSettings { CompressionLevel = GetLZ4Level(level) }, leaveOpen: true))
-            {
-                lz4Stream.Write(source);
-            }
-            return (int)memStream.Position;
-        }
-
-        return 0;
     }
 
-    /// <summary>
-    /// Best-effort deletes a file if it exists and can be removed without raising an exception.
-    /// </summary>
-    /// <param name="path">The full path of the file to delete.</param>
-    private static void TryDeleteFile(string path)
+    internal static bool IsBlobIdentifier(string hash) =>
+        (hash.Length == 64 || (hash.Length == 66 && hash[64] == '-' && hash[65] is '1' or '2')) &&
+        hash.AsSpan(0, 64).IndexOfAnyExcept("0123456789abcdef") < 0;
+
+    internal static void TryDeleteFile(string path)
     {
-        try { File.Delete(path); } catch { }
+        try { File.Delete(path); }
+        catch (IOException error) { Trace.TraceWarning("Vessel could not remove '{0}': {1}", path, error.Message); }
+        catch (UnauthorizedAccessException error) { Trace.TraceWarning("Vessel could not remove '{0}': {1}", path, error.Message); }
     }
 
     /// <summary>
@@ -433,13 +304,11 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
 #endif
 
     /// <summary>
-    /// Stops the background delete worker and releases the engine's disposable resources.
+    /// Releases the engine's disposable resources.
     /// </summary>
     public void Dispose()
     {
         ObjectDisposedException.ThrowIf(Interlocked.Exchange(ref _disposed, 1) != 0, this);
-        _cts.Cancel();
-        _deleteChannel.Writer.TryComplete();
     }
 
     /// <summary>

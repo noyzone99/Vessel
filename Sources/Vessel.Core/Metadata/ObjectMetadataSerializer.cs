@@ -54,6 +54,7 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
     public ObjectMetadata Deserialize(Memory<byte> bytes)
     {
         ReadOnlySpan<byte> source = bytes.Span;
+        if (source.Length < 52) throw new InvalidDataException("The metadata record is incomplete.");
         int bytesRead = 0;
 
         long originalSize = BinaryPrimitives.ReadInt64LittleEndian(source[bytesRead..]);
@@ -64,9 +65,13 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
 
         CompressionType compressionType = (CompressionType)BinaryPrimitives.ReadInt32LittleEndian(source[bytesRead..]);
         bytesRead += 4;
+        if (originalSize < 0 || compressedSize < 0)
+            throw new InvalidDataException("The metadata record contains an invalid size.");
 
         long lastModifiedMs = BinaryPrimitives.ReadInt64LittleEndian(source[bytesRead..]);
-        DateTimeOffset creationDate = DateTimeOffset.FromUnixTimeMilliseconds(lastModifiedMs);
+        DateTimeOffset creationDate;
+        try { creationDate = DateTimeOffset.FromUnixTimeMilliseconds(lastModifiedMs); }
+        catch (ArgumentOutOfRangeException error) { throw new InvalidDataException("The metadata timestamp is invalid.", error); }
         bytesRead += 8;
 
         string key = ReadString(source, ref bytesRead)!;
@@ -75,9 +80,11 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
         string? fileName = ReadString(source, ref bytesRead);
         string? extension = ReadString(source, ref bytesRead);
         string? mimeType = ReadString(source, ref bytesRead);
+        if (bytesRead != source.Length || (key is not null && (hash is null || eTag is null)))
+            throw new InvalidDataException("The metadata record has an invalid layout.");
 
         return new ObjectMetadata(
-            Key: key,
+            Key: key!,
             Hash: hash,
             OriginalSize: originalSize,
             CompressionType: compressionType,
@@ -125,6 +132,7 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static string? ReadString(ReadOnlySpan<byte> source, ref int bytesRead)
     {
+        if (source.Length - bytesRead < 4) throw new InvalidDataException("The metadata string length is missing.");
         int length = BinaryPrimitives.ReadInt32LittleEndian(source[bytesRead..]);
         bytesRead += 4;
 
@@ -133,10 +141,7 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
             return null;
         }
 
-        if (length == 0)
-        {
-            return string.Empty;
-        }
+        if (length < 0 || length > source.Length - bytesRead) throw new InvalidDataException("The metadata string length is invalid.");
 
         string value = Encoding.UTF8.GetString(source.Slice(bytesRead, length));
         bytesRead += length;
@@ -151,14 +156,9 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetRequiredByteCount(in ObjectMetadata metadata)
     {
-        int size = 28;
-        size += GetStringByteCount(metadata.Key);
-        size += GetStringByteCount(metadata.Hash);
-        size += GetStringByteCount(metadata.ETag);
-        size += GetStringByteCount(metadata.FileName);
-        size += GetStringByteCount(metadata.Extension);
-        size += GetStringByteCount(metadata.MimeType);
-        return size;
+        return checked(28 + GetStringByteCount(metadata.Key) + GetStringByteCount(metadata.Hash) +
+            GetStringByteCount(metadata.ETag) + GetStringByteCount(metadata.FileName) +
+            GetStringByteCount(metadata.Extension) + GetStringByteCount(metadata.MimeType));
     }
 
     /// <summary>
@@ -168,7 +168,7 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
     /// <returns>The number of bytes required to encode the supplied string.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetStringByteCount(string? str)
-        => str is null ? 4 : 4 + Encoding.UTF8.GetByteCount(str);
+        => str is null ? 4 : checked(4 + Encoding.UTF8.GetByteCount(str));
 
     #endregion
 }

@@ -389,14 +389,22 @@ public sealed class VesselStorageTests : IDisposable
     {
         const string key = "last-ref-key";
         const string content = "unique content for deletion";
-        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
-        await _storage.PutAsync(key, stream, cancellationToken: TestContext.Current.CancellationToken);
+        await using var inputStream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+        var metadata = await _storage.PutAsync(key, inputStream, cancellationToken: TestContext.Current.CancellationToken);
+        using var openStream = _storage.GetStream(key);
 
         var deleted = await _storage.DeleteAsync(key, TestContext.Current.CancellationToken);
 
         Assert.True(deleted);
-        var metadata = _storage.GetMetadata(key);
-        Assert.Null(metadata);
+        Assert.Null(_storage.GetMetadata(key));
+        using var reader = new StreamReader(openStream);
+        Assert.Equal(content, await reader.ReadToEndAsync(TestContext.Current.CancellationToken));
+        Assert.False(File.Exists(Path.Combine(
+            _tempDirectory,
+            "blobs",
+            metadata.Hash[..2],
+            metadata.Hash.Substring(2, 2),
+            $"{metadata.Hash}.blob")));
     }
 
     [Fact]
@@ -556,27 +564,6 @@ public sealed class VesselStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task DisposeAsync_WithoutLogger_CompletesSuccessfully()
-    {
-        var tempDirectory = Path.Combine(Path.GetTempPath(), $"VesselTests_{Guid.NewGuid():N}");
-        var options = new VesselStorageOptions
-        {
-            Logger = null,
-            EnableMetadataCompression = false
-        };
-        var storage = new VesselStorage(tempDirectory, options);
-
-        storage.Dispose();
-
-        Assert.True(true);
-
-        if (Directory.Exists(tempDirectory))
-        {
-            Directory.Delete(tempDirectory, recursive: true);
-        }
-    }
-
-    [Fact]
     public async Task DisposeAsync_CalledMultipleTimes_ThrowsObjectDisposedException()
     {
         var tempDirectory = Path.Combine(Path.GetTempPath(), $"VesselTests_{Guid.NewGuid():N}");
@@ -590,27 +577,6 @@ public sealed class VesselStorageTests : IDisposable
         storage.Dispose();
 
         Assert.Throws<ObjectDisposedException>(() => storage.Dispose());
-
-        if (Directory.Exists(tempDirectory))
-        {
-            Directory.Delete(tempDirectory, recursive: true);
-        }
-    }
-
-    [Fact]
-    public async Task DisposeAsync_ReturnsCompletedTask()
-    {
-        var tempDirectory = Path.Combine(Path.GetTempPath(), $"VesselTests_{Guid.NewGuid():N}");
-        var options = new VesselStorageOptions
-        {
-            Logger = null,
-            EnableMetadataCompression = false
-        };
-        var storage = new VesselStorage(tempDirectory, options);
-
-        storage.Dispose();
-
-        Assert.True(true);
 
         if (Directory.Exists(tempDirectory))
         {

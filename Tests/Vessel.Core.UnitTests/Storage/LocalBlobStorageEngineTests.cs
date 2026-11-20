@@ -543,7 +543,7 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
             hash = Hash;
         }
 
-        engine.QueueDeleteBlob(hash);
+        engine.DeleteBlob(hash);
 
         Assert.Throws<FileNotFoundException>(() => engine.OpenBlobRead(hash, CompressionType.None));
     }
@@ -554,7 +554,7 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
         var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
         const string nonExistentHash = "0000000000000000000000000000000000000000000000000000000000000000";
 
-        engine.QueueDeleteBlob(nonExistentHash);
+        engine.DeleteBlob(nonExistentHash);
     }
 
     [Fact]
@@ -562,7 +562,7 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
     {
         var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
 
-        Assert.ThrowsAny<ArgumentException>(() => engine.QueueDeleteBlob(null!));
+        Assert.ThrowsAny<ArgumentException>(() => engine.DeleteBlob(null!));
     }
 
     [Fact]
@@ -570,7 +570,7 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
     {
         var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
 
-        Assert.ThrowsAny<ArgumentException>(() => engine.QueueDeleteBlob(string.Empty));
+        Assert.ThrowsAny<ArgumentException>(() => engine.DeleteBlob(string.Empty));
     }
 
     [Fact]
@@ -578,7 +578,7 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
     {
         var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
 
-        Assert.ThrowsAny<ArgumentException>(() => engine.QueueDeleteBlob("   "));
+        Assert.ThrowsAny<ArgumentException>(() => engine.DeleteBlob("   "));
     }
 
     [Fact]
@@ -635,24 +635,22 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
     }
 
     [Fact]
-    public async Task WriteBlobAsync_WithReadOnlyDestination_HandlesIOException()
+    public async Task ConcurrentCompressionLevelsReportTheSizeOfThePublishedBlob()
     {
-        var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
-        var testData = "Test for race condition"u8.ToArray();
-
-        string hash;
-        await using (var inputStream = new MemoryStream(testData))
-        {
-            var (Hash, Size, CompressedSize) = await engine.WriteBlobAsync(inputStream, CompressionType.None, CompressionLevel.Balanced, CancellationToken.None);
-            hash = Hash;
-        }
-
-        await using (var inputStream = new MemoryStream(testData))
-        {
-            var (Hash, Size, CompressedSize) = await engine.WriteBlobAsync(inputStream, CompressionType.None, CompressionLevel.Balanced, CancellationToken.None);
-
-            Assert.Equal(hash, Hash);
-        }
+        var token = TestContext.Current.CancellationToken;
+        using var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
+        var data = new byte[130_017];
+        new Random(8311).NextBytes(data);
+        for (var offset = 0; offset < data.Length - 64; offset += 173)
+            data.AsSpan(offset, 64).Fill((byte)(offset % 13));
+        using var fast = new MemoryStream(data, writable: false);
+        using var slow = new MemoryStream(data, writable: false);
+        var writes = await Task.WhenAll(
+            engine.WriteBlobAsync(fast, CompressionType.Zstd, CompressionLevel.Fastest, token),
+            engine.WriteBlobAsync(slow, CompressionType.Zstd, CompressionLevel.Ultra, token));
+        var blob = Directory.EnumerateFiles(Path.Combine(_testRootPath, "blobs"), "*.blob", SearchOption.AllDirectories).Single();
+        Assert.Equal(writes[0].Hash, writes[1].Hash);
+        Assert.All(writes, result => Assert.Equal(new FileInfo(blob).Length, result.CompressedSize));
     }
 
     [Fact]
@@ -733,7 +731,7 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
     }
 
     [Fact]
-    public void CleanupOrphanedTempFiles_WithLockedFile_PreservesFile()
+    public void CleanupOrphanedTempFiles_WithLockedFile_PreservesTheOpenStream()
     {
         var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
         var tmpPath = Path.Combine(_testRootPath, "tmp");
@@ -744,7 +742,8 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
 
         engine.CleanupOrphanedTempFiles();
 
-        Assert.True(File.Exists(tempFile));
+        Assert.Equal(OperatingSystem.IsWindows(), File.Exists(tempFile));
+        Assert.Equal((int)'l', fileStream.ReadByte());
     }
 
     [Fact]
@@ -762,7 +761,7 @@ public sealed class LocalBlobStorageEngineTests : IDisposable
         var engine = new LocalBlobStorageEngine(_testRootPath, _mockLogger.Object);
         const string shortHash = "ab";
 
-        Assert.Throws<ArgumentException>(() => engine.QueueDeleteBlob(shortHash));
+        Assert.Throws<ArgumentException>(() => engine.DeleteBlob(shortHash));
     }
 
     [Fact]

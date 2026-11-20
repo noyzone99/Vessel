@@ -4,7 +4,7 @@ using Vessel;
 Console.WriteLine("Esempio di utilizzo realistico di VesselStorage\n");
 
 var storageRoot = Path.Combine(AppContext.BaseDirectory, ".storage-demo");
-var storage = new VesselStorage(storageRoot);
+using var storage = new VesselStorage(storageRoot);
 
 var documents = new[]
 {
@@ -41,7 +41,7 @@ var uploadTasks = documents.Select(document => Task.Run(async () =>
     return await storage.PutAsync(
         document.Key,
         stream,
-        overwrite: false,
+        overwrite: true,
         new ObjectInfo(document.FileName, Path.GetExtension(document.FileName), "application/octet-stream"),
         document.CompressionType,
         document.CompressionLevel);

@@ -1,10 +1,10 @@
-﻿namespace Vessel;
+namespace Vessel;
 
 /// <summary>
 /// Describes a stored object identified by its logical key, blob identity, size, entity tag, and optional file attributes.
 /// </summary>
 /// <param name="Key">The logical key used by the caller.</param>
-/// <param name="Hash">The SHA-256 hash that identifies the physical blob.</param>
+/// <param name="Hash">The physical blob identifier, including a codec suffix for compressed data.</param>
 /// <param name="OriginalSize">The size of the stored object in bytes.</param>
 /// <param name="CompressionType">The compression algorithm applied to the stored blob.</param>
 /// <param name="ETag">The entity tag derived from the blob hash.</param>
@@ -23,4 +23,8 @@ public readonly record struct ObjectMetadata(
     string? FileName = null,
     string? Extension = null,
     string? MimeType = null,
-    long CompressedSize = 0);
+    long CompressedSize = 0)
+{
+    /// <summary>Gets the SHA-256 hash of the uncompressed payload.</summary>
+    public string ContentHash => Hash is { Length: 66 } ? Hash[..64] : Hash;
+}

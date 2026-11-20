@@ -1,4 +1,4 @@
-﻿namespace Vessel.Storage;
+namespace Vessel.Storage;
 
 /// <summary>
 /// Defines the contract for persisting and reading object payload blobs in the backing storage engine.
@@ -21,17 +21,18 @@ internal interface IBlobStorageEngine
     /// </summary>
     /// <param name="hash">The content hash that identifies the blob file.</param>
     /// <param name="compressionType">The compression codec used to encode the blob.</param>
+    /// <param name="expectedSize">Optional stored length to verify before opening a decoder.</param>
     /// <returns>A readable stream that exposes the blob contents.</returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="hash"/> is null, empty, or whitespace.</exception>
     /// <exception cref="FileNotFoundException">Thrown when the blob does not exist.</exception>
-    Stream OpenBlobRead(string hash, CompressionType compressionType);
+    Stream OpenBlobRead(string hash, CompressionType compressionType, long? expectedSize = null);
 
     /// <summary>
     /// Deletes the blob identified by the supplied hash when it exists.
     /// </summary>
     /// <param name="hash">The content hash identifying the blob to remove.</param>
     /// <exception cref="ArgumentException">Thrown when <paramref name="hash"/> is null, empty, or whitespace.</exception>
-    void QueueDeleteBlob(string hash);
+    void DeleteBlob(string hash);
 
     /// <summary>
     /// Removes temporary files that may have been left behind by interrupted writes.

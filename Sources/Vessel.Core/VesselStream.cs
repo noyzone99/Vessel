@@ -7,6 +7,7 @@ public sealed class VesselStream : Stream
 {
     private readonly Stream _innerStream;
     private readonly bool _leaveOpen;
+    private int _closed;
 
     /// <summary>
     /// Initializes a new wrapper around the supplied stream.
@@ -15,10 +16,11 @@ public sealed class VesselStream : Stream
     /// <param name="checksum">The checksum associated with the payload.</param>
     /// <param name="length">The logical length of the payload stream.</param>
     /// <param name="objectInfo">Optional file metadata to associate with the payload.</param>
+    /// <param name="metadata">The metadata snapshot associated with this stream.</param>
     /// <param name="leaveOpen">
     /// When <see langword="true"/>, the wrapped stream is not disposed when this wrapper is disposed.
     /// </param>
-    internal VesselStream(Stream innerStream, string checksum, long length, ObjectInfo? objectInfo = null, bool leaveOpen = false)
+    internal VesselStream(Stream innerStream, string checksum, long length, ObjectInfo? objectInfo = null, bool leaveOpen = false, ObjectMetadata? metadata = null)
     {
         _innerStream = innerStream ?? throw new ArgumentNullException(nameof(innerStream));
         _leaveOpen = leaveOpen;
@@ -27,6 +29,7 @@ public sealed class VesselStream : Stream
         Extension = objectInfo?.Extension;
         MimeType = objectInfo?.MimeType;
         Checksum = checksum;
+        Metadata = metadata;
     }
 
     /// <summary>
@@ -49,6 +52,9 @@ public sealed class VesselStream : Stream
     /// </summary>
     public string Checksum { get; }
 
+    /// <summary>Gets the metadata captured when this stream was opened.</summary>
+    public ObjectMetadata? Metadata { get; }
+
     /// <inheritdoc/>
     public override bool CanRead => _innerStream.CanRead;
 
@@ -67,8 +73,16 @@ public sealed class VesselStream : Stream
     /// <inheritdoc/>
     public override long Position
     {
-        get => CanSeek ? _innerStream.Position : 0;
-        set => throw new NotSupportedException("Cannot set the position of a read-only VesselStream.");
+        get
+        {
+            EnsureSeekable();
+            return _innerStream.Position;
+        }
+        set
+        {
+            EnsureSeekable();
+            _innerStream.Position = value;
+        }
     }
 
     /// <inheritdoc/>
@@ -91,7 +105,7 @@ public sealed class VesselStream : Stream
 
     /// <inheritdoc/>
     public override IAsyncResult BeginWrite(byte[] buffer, int offset, int count, AsyncCallback? callback, object? state)
-        => _innerStream.BeginWrite(buffer, offset, count, callback, state);
+        => throw new NotSupportedException("The vessel stream is read-only.");
 
     /// <inheritdoc/>
     public override void CopyTo(Stream destination, int bufferSize)
@@ -107,7 +121,7 @@ public sealed class VesselStream : Stream
 
     /// <inheritdoc/>
     public override void EndWrite(IAsyncResult asyncResult)
-        => _innerStream.EndWrite(asyncResult);
+        => throw new NotSupportedException("The vessel stream is read-only.");
 
     /// <inheritdoc/>
     public override void Flush()
@@ -139,7 +153,16 @@ public sealed class VesselStream : Stream
 
     /// <inheritdoc/>
     public override long Seek(long offset, SeekOrigin origin)
-        => _innerStream.Seek(offset, origin);
+    {
+        EnsureSeekable();
+        return _innerStream.Seek(offset, origin);
+    }
+
+    private void EnsureSeekable()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _closed) != 0, this);
+        if (!CanSeek) throw new NotSupportedException("The vessel stream does not support seeking.");
+    }
 
     /// <inheritdoc/>
     public override void SetLength(long value)
@@ -170,7 +193,7 @@ public sealed class VesselStream : Stream
     {
         try
         {
-            if (disposing && !_leaveOpen)
+            if (disposing && !_leaveOpen && Interlocked.Exchange(ref _closed, 1) == 0)
             {
                 _innerStream.Dispose();
             }
@@ -186,14 +209,14 @@ public sealed class VesselStream : Stream
     {
         try
         {
-            if (!_leaveOpen)
+            if (!_leaveOpen && Interlocked.Exchange(ref _closed, 1) == 0)
             {
                 await _innerStream.DisposeAsync().ConfigureAwait(false);
             }
         }
         finally
         {
-            await base.DisposeAsync().ConfigureAwait(false);
+            GC.SuppressFinalize(this);
         }
     }
 }

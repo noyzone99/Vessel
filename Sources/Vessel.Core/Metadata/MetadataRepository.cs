@@ -1,4 +1,5 @@
-﻿using Vessel.Logging;
+using Vessel.Logging;
+using System.Collections.Concurrent;
 using ZoneTree;
 using ZoneTree.Options;
 
@@ -10,9 +11,8 @@ namespace Vessel.Metadata;
 internal sealed class MetadataRepository : IMetadataRepository
 {
     private readonly IZoneTree<string, ObjectMetadata> _metadataDb;
-    private readonly IZoneTree<string, int> _refCountDb;
     private readonly IMaintainer _metadataDbMaintainer;
-    private readonly IMaintainer _refCountDbMaintainer;
+    private readonly ConcurrentDictionary<string, int> _refCounts = new(StringComparer.Ordinal);
     private readonly IVesselLogger? _logger;
     private int _disposed;
 
@@ -21,7 +21,7 @@ internal sealed class MetadataRepository : IMetadataRepository
     /// </summary>
     /// <param name="storageBasePath">The root directory where the metadata database is created.</param>
     /// <param name="useCompression">
-    /// When <see langword="true"/>, RocksDB uses compression for metadata entries; otherwise metadata is stored
+    /// When <see langword="true"/>, ZoneTree uses compression for metadata entries; otherwise metadata is stored
     /// uncompressed.
     /// </param>
     /// <param name="logger">An optional logger used to capture operational diagnostics.</param>
@@ -30,11 +30,32 @@ internal sealed class MetadataRepository : IMetadataRepository
     /// </exception>
     public MetadataRepository(string storageBasePath, bool useCompression, IVesselLogger? logger = null)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(storageBasePath);
         _logger = logger;
         var fullPath = Path.GetFullPath(storageBasePath);
 
-        _metadataDb = new ZoneTreeFactory<string, ObjectMetadata>()
-            .SetDataDirectory(Path.Join(fullPath, "metadata"))
+        var currentPath = Path.Join(fullPath, "metadata-v1");
+        var legacyPath = Path.Join(fullPath, "metadata");
+        if (!Directory.Exists(currentPath) && Directory.Exists(legacyPath))
+            MigrateLegacyMetadata(legacyPath, currentPath, useCompression);
+
+        _metadataDb = CreateFactory(currentPath, useCompression, WriteAheadLogMode.Sync).OpenOrCreate();
+        try
+        {
+            RebuildReferenceCounts();
+            _metadataDbMaintainer = _metadataDb.CreateMaintainer();
+        }
+        catch
+        {
+            _metadataDb.Dispose();
+            throw;
+        }
+    }
+
+    private static ZoneTreeFactory<string, ObjectMetadata> CreateFactory(string path, bool useCompression, WriteAheadLogMode logMode)
+        => new ZoneTreeFactory<string, ObjectMetadata>()
+            .SetDataDirectory(path)
+            .ConfigureWriteAheadLogOptions(options => options.WriteAheadLogMode = logMode)
             .ConfigureDiskSegmentOptions(options =>
             {
                 options.CompressionMethod = useCompression ? CompressionMethod.LZ4 : CompressionMethod.None;
@@ -43,15 +64,22 @@ internal sealed class MetadataRepository : IMetadataRepository
             })
             .SetValueSerializer(new ObjectMetadataSerializer())
             .SetIsDeletedDelegate(static (in _, in value) => string.IsNullOrEmpty(value.Key))
-            .SetMarkValueDeletedDelegate(static (ref value) => value = default)
-            .OpenOrCreate();
-        _metadataDbMaintainer = _metadataDb.CreateMaintainer();
+            .SetMarkValueDeletedDelegate(static (ref value) => value = default);
 
-        _refCountDb = new ZoneTreeFactory<string, int>()
-            .SetDataDirectory(Path.Join(fullPath, "refcounts"))
-            .ConfigureDiskSegmentOptions(options => options.CompressionMethod = CompressionMethod.None)
-            .OpenOrCreate();
-        _refCountDbMaintainer = _refCountDb.CreateMaintainer();
+    private static void MigrateLegacyMetadata(string legacyPath, string currentPath, bool useCompression)
+    {
+        var stagingPath = $"{currentPath}.migration-{Guid.NewGuid():N}";
+        // ZoneTree preserves the WAL encoding of an existing segment. Copy into a new sync store.
+        using (var legacy = CreateFactory(legacyPath, useCompression, WriteAheadLogMode.AsyncCompressed).OpenOrCreate())
+        using (var target = CreateFactory(stagingPath, useCompression, WriteAheadLogMode.Sync).OpenOrCreate())
+        using (var iterator = legacy.CreateIterator())
+        {
+            iterator.SeekFirst();
+            while (iterator.Next())
+                target.Upsert(iterator.CurrentKey, iterator.CurrentValue);
+        }
+
+        Directory.Move(stagingPath, currentPath);
     }
 
     /// <inheritdoc/>
@@ -82,7 +110,11 @@ internal sealed class MetadataRepository : IMetadataRepository
                 _metadataDb.Upsert(metadata.Key, metadata);
                 return;
             }
+
+            IncrementRefCount(metadata.Hash);
+            _metadataDb.Upsert(metadata.Key, metadata);
             DecrementRefCount(oldMetadata.Hash);
+            return;
         }
 
         IncrementRefCount(metadata.Hash);
@@ -94,15 +126,17 @@ internal sealed class MetadataRepository : IMetadataRepository
     {
         ThrowIfDisposed();
         if (!_metadataDb.TryGet(key, out var metadata)) return false;
+        if (!_metadataDb.TryDelete(key, out _)) return false;
         DecrementRefCount(metadata.Hash);
-        return _metadataDb.TryDelete(key, out _);
+        return true;
     }
 
     /// <inheritdoc/>
     public bool IsHashReferenced(string hash)
     {
         ThrowIfDisposed();
-        return _refCountDb.TryGet(hash, out var count) && count > 0;
+        if (string.IsNullOrWhiteSpace(hash)) return false;
+        return _refCounts.TryGetValue(hash, out var count) && count > 0;
     }
 
     /// <inheritdoc/>
@@ -115,7 +149,7 @@ internal sealed class MetadataRepository : IMetadataRepository
 
         _logger?.Log(VesselLogLevel.Debug, $"Iterating keys (sync) with prefix '{prefix}'.");
 
-        if (string.IsNullOrWhiteSpace(prefix))
+        if (prefix.Length == 0)
         {
             iterator.SeekFirst();
         }
@@ -146,19 +180,38 @@ internal sealed class MetadataRepository : IMetadataRepository
     /// <param name="hash">The blob hash for which the reference count should be incremented.</param>
     private void IncrementRefCount(string hash)
     {
-        _refCountDb.Upsert(hash, _refCountDb.TryGet(hash, out var count) ? count + 1 : 1);
+        _refCounts.AddOrUpdate(hash, 1, static (_, count) => checked(count + 1));
     }
 
     /// <summary>
-    /// Decreases the reference count for the supplied blob hash and removes the entry when no references remain.
+    /// Decreases the reference count for the supplied blob hash without allowing it to become negative.
     /// </summary>
     /// <param name="hash">The blob hash for which the reference count should be decremented.</param>
     private void DecrementRefCount(string hash)
     {
-        if (_refCountDb.TryGet(hash, out var count))
+        while (_refCounts.TryGetValue(hash, out var count))
         {
-            if (count <= 1) _refCountDb.TryDelete(hash, out _);
-            else _refCountDb.Upsert(hash, count - 1);
+            if (count == 1)
+            {
+                if (_refCounts.TryRemove(new KeyValuePair<string, int>(hash, count))) return;
+            }
+            else if (_refCounts.TryUpdate(hash, count - 1, count))
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reconstructs the derived reference counts from durable object metadata.
+    /// </summary>
+    private void RebuildReferenceCounts()
+    {
+        using var iterator = _metadataDb.CreateIterator();
+        iterator.SeekFirst();
+        while (iterator.Next())
+        {
+            IncrementRefCount(iterator.CurrentValue.Hash);
         }
     }
 
@@ -170,8 +223,6 @@ internal sealed class MetadataRepository : IMetadataRepository
         ObjectDisposedException.ThrowIf(Interlocked.Exchange(ref _disposed, 1) != 0, this);
         _metadataDbMaintainer.Dispose();
         _metadataDb.Dispose();
-        _refCountDbMaintainer.Dispose();
-        _refCountDb.Dispose();
     }
 
     /// <summary>

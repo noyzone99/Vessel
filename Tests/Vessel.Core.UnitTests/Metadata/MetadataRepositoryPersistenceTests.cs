@@ -187,10 +187,12 @@ public sealed class MetadataRepositoryPersistenceTests : IDisposable
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: false, _mockLogger.Object))
         {
             repository.Upsert(CreateTestMetadata("key1", "hash1"));
+            repository.Upsert(CreateTestMetadata("key2", "hash1"));
         }
 
         using (var repository = new MetadataRepository(_testStoragePath, useCompression: true, _mockLogger.Object))
         {
+            Assert.True(repository.Delete("key1"));
             var isReferenced = repository.IsHashReferenced("hash1");
             Assert.True(isReferenced);
         }
