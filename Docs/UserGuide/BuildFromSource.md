@@ -13,7 +13,7 @@ dotnet pack Sources/Vessel -c Release
 
 ## Platforms and architectures
 
-The platform matrix applies to the native library and language bindings that load it. The process that loads the library must match the binary's operating system, architecture and, on Linux, C library. The [native CI workflow](../../.github/workflows/validate.yml) builds each target, runs the C and Python ABI smoke tests, and tests the Python wheel in a fresh virtual environment.
+The platform matrix applies to the native library and language bindings that load it. The process that loads the library must match the binary's operating system, architecture and, on Linux, C library. The [CI workflow](../../.github/workflows/validate.yml) builds each target, runs the C and Python ABI smoke tests, tests the Python wheel in a fresh virtual environment and runs the same assembled Java JAR on all eight targets.
 
 | Platform | Architecture | .NET runtime identifier (RID) | Shared library | CI runner |
 | --- | --- | --- | --- | --- |
@@ -120,10 +120,27 @@ sh Tests/Vessel.Native.Tests/smoke.sh /path/to/libvessel.so
 
 To run only the Python package tests, [install the package](Python/README.md#setup), set `VESSEL_LIBRARY_PATH` to a matching shared library and run `python -m unittest discover -s Bindings/python/tests` from the repository root.
 
+## Build the Java JAR
+
+Install JDK 25 and Maven 3.9 or later. Publish the [shared library](#build-the-shared-library) for your target. To build and test with the Windows x64 binary from the repository root, run the following in PowerShell.
+
+```powershell
+dotnet publish Sources/Vessel.Native -c Release -r win-x64
+New-Item -ItemType Directory -Force artifacts/java-natives/win-x64
+Copy-Item Sources/Vessel.Native/bin/Release/net11.0/win-x64/publish/vessel.dll artifacts/java-natives/win-x64/
+mvn -f Bindings/java/pom.xml clean verify
+```
+
+For Linux or macOS, use the same structure under `artifacts/java-natives/<RID>/` and the filename from the [platform table](#platforms-and-architectures). Run `mvn -f Bindings/java/pom.xml clean install` to install the result in your local Maven repository. Keep the staging directory limited to the targets you intend to bundle.
+
+The `verify` phase runs [the smoke test](../../Bindings/java/src/test/java/Smoke.java) with the packaged JAR on the classpath. CI stages all eight binaries from the tested native artifacts, checks every packaged binary against its input and builds the [Maven and Gradle examples](../../Examples/java) against the resulting artifact. It then tests the same JAR from scratch on each host, including an Alpine JVM for musl.
+
 ## Tagged releases
 
-Set the .NET and native version in [`Directory.Build.props`](../../Directory.Build.props) and its Python equivalent in [`pyproject.toml`](../../Bindings/python/pyproject.toml). For the first alpha, the version is `0.0.1-alpha.1` and the Python equivalent is `0.0.1a1`. The C ABI version is tracked separately in [`vessel.h`](../../Sources/Vessel.Native/vessel.h).
+Set the .NET and native version in [`Directory.Build.props`](../../Directory.Build.props), the same Java version in [`Bindings/java/pom.xml`](../../Bindings/java/pom.xml) and its Python equivalent in [`pyproject.toml`](../../Bindings/python/pyproject.toml). For the first alpha, the version is `0.0.1-alpha.1` and the Python equivalent is `0.0.1a1`. Update the version shown in the Java guide and examples. The C ABI version is tracked separately in [`vessel.h`](../../Sources/Vessel.Native/vessel.h).
 
-A tag matching the configured version, such as `v0.0.1-alpha.1`, triggers the [release jobs](../../.github/workflows/validate.yml) after validation. The [GitHub Release](https://github.com/noyzone99/Vessel/releases) contains eight dynamic and two experimental static C archives, the `VesselStorage` NuGet package and eight `vessel-storage` wheels. Each wheel contains the shared library for its target. PyPI receives those same wheels.
+A tag matching the configured version, such as `v0.0.1-alpha.1`, triggers the [release jobs](../../.github/workflows/validate.yml) after validation. The [GitHub Release](https://github.com/berik-99/Vessel/releases) contains eight dynamic and two experimental static C archives, the `VesselStorage` NuGet package, eight `vessel-storage` wheels and the Java JAR with its POM, sources and Javadoc. PyPI receives the platform wheels.
+
+To stage the Java release on [Maven Central](https://central.sonatype.org/publish/publish-portal-api/), verify the `io.github.berik-99` namespace in Central Portal, set the repository variable `MAVEN_CENTRAL_ENABLED` to `true` and configure the `maven-central` GitHub environment. Set `CENTRAL_USERNAME` and `CENTRAL_PASSWORD` to the Portal token credentials. Set `CENTRAL_GPG_PRIVATE_KEY` to the ASCII-armored private key and `CENTRAL_GPG_PASSPHRASE` to its passphrase, and publish the public key as required by [Central's signing instructions](https://central.sonatype.org/publish/requirements/gpg/). The tag job signs and stages the tested artifacts. Publish the validated deployment from the Portal.
 
 Registry publication uses the `NUGET_API_KEY` secret in the `nuget` GitHub environment and a PyPI Trusted Publisher for `noyzone99/Vessel`, workflow `validate.yml` and environment `pypi`. The GitHub Release is available even if a registry needs its credentials configured. [NuGet publication](https://learn.microsoft.com/en-us/nuget/nuget-org/publish-a-package) · [PyPI Trusted Publishers](https://docs.pypi.org/trusted-publishers/adding-a-publisher/)

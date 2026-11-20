@@ -19,8 +19,9 @@ Vessel is designed to keep memory use predictable while streaming large objects 
 - [C#](Docs/UserGuide/CSharp/README.md) uses the `VesselStorage` NuGet package on .NET 8, .NET 10 or .NET 11.
 - [C](Docs/UserGuide/C/README.md) uses `vessel.h` and the native library.
 - [Python](Docs/UserGuide/Python/README.md) uses the `vessel-storage` wheel with its bundled native library.
+- [Java](Docs/UserGuide/Java/README.md) uses the `vessel-storage` JAR on Java 25 with bundled native libraries.
 
-For published versions, find the native C archives, NuGet package and Python wheels in [GitHub Releases](https://github.com/noyzone99/Vessel/releases). The [user guide](Docs/UserGuide/README.md) also links to NuGet.org and PyPI.
+For published versions, find the native C archives, NuGet package, Python wheels and Java JARs in [GitHub Releases](https://github.com/berik-99/Vessel/releases). The [user guide](Docs/UserGuide/README.md) links to the package registries.
 
 ## Build from source
 
@@ -31,6 +32,7 @@ Run `dotnet build Vessel.slnx -c Release` from the repository root to build the 
 - **C#** — [Build the `VesselStorage` NuGet package](Docs/UserGuide/BuildFromSource.md#build-the-managed-library).
 - **C** — [Publish the shared library](Docs/UserGuide/BuildFromSource.md#build-the-shared-library) or [build an experimental static library](Docs/UserGuide/BuildFromSource.md#build-a-static-library) with Python 3.10 or later.
 - **Python** — [Build a wheel from the shared library](Docs/UserGuide/BuildFromSource.md#build-a-python-wheel). This requires Python 3.10 or later with `venv` and `pip`, plus `patchelf` on Linux.
+- **Java** — [Build the JAR with Maven](Docs/UserGuide/BuildFromSource.md#build-the-java-jar). This requires JDK 25 and the shared library for each platform you want to package.
 
 ## Documentation
 
