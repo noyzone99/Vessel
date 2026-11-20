@@ -16,3 +16,10 @@ public unsafe struct NativeObjectMetadata
     public byte* Extension;
     public byte* MimeType;
 }
+
+[StructLayout(LayoutKind.Sequential)]
+public struct NativeMetadataResult
+{
+    public NativeObjectMetadata Metadata;
+    public long CreationDateUnixMs;
+}

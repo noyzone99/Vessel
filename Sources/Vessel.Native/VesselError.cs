@@ -2,6 +2,9 @@
 
 public enum VesselError
 {
+    OutOfMemory = -10,
+    LimitExceeded = -9,
+    Cancelled = -8,
     InvalidOperation = -7,
     Disposed = -6,
     IoError = -5,

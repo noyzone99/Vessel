@@ -1,671 +1,467 @@
-﻿using System.Diagnostics.CodeAnalysis;
+using System.Buffers;
+using System.IO.Pipelines;
+using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
+using Vessel.Logging;
 
 namespace Vessel.Native;
 
 public static unsafe class NativeExports
 {
-    private static readonly Lock s_disposeLock = new();
+    private const int ChunkSize = 64 * 1024;
+    private const int WholeReadLimit = 64 * 1024 * 1024;
+    private static readonly UTF8Encoding s_utf8 = new(false, true);
+    private static readonly NativeHandles<VesselStorage> s_stores = new();
+    private static readonly NativeHandles<VesselStream> s_streams = new();
 
-    [UnmanagedCallersOnly(EntryPoint = "vessel_init")]
-    public static VesselError Initialize(byte* pathPtr, IntPtr* outHandle)
+    [UnmanagedCallersOnly(EntryPoint = "vessel_abi_version", CallConvs = [typeof(CallConvCdecl)])]
+    public static int AbiVersion() => 1;
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_init", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError Initialize(byte* path, nint* output) => OpenStore(path, null, output);
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_init_ex", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError InitializeEx(byte* path, NativeOptions* options, nint* output) => OpenStore(path, options, output);
+
+    private static VesselError OpenStore(byte* path, NativeOptions* options, nint* output)
     {
-        if (pathPtr == null || outHandle == null)
+        if (output == null) return VesselError.InvalidArgument;
+        *output = 0;
+        if (path == null || (options != null && options->EnableMetadataCompression is not (0 or 1)))
             return VesselError.InvalidArgument;
 
         try
         {
-            string path = Marshal.PtrToStringUTF8((IntPtr)pathPtr)
-                ?? throw new ArgumentException("Path is null");
-
-            if (string.IsNullOrWhiteSpace(path))
-                return VesselError.InvalidArgument;
-
-            var storage = new VesselStorage(path);
-            GCHandle handle = GCHandle.Alloc(storage);
-            *outHandle = GCHandle.ToIntPtr(handle);
+            var configuration = options == null ? null : new VesselStorageOptions(
+                options->EnableMetadataCompression != 0,
+                options->Log == null ? null : new NativeLogger(options->Log, options->LogContext));
+            *output = s_stores.Add(new VesselStorage(Decode(path), configuration));
             return VesselError.Success;
         }
-        catch (ArgumentException)
-        {
-            return VesselError.InvalidArgument;
-        }
-        catch (Exception)
-        {
-            return VesselError.UnknownError;
-        }
+        catch (Exception error) { return MapError(error); }
     }
 
-    [UnmanagedCallersOnly(EntryPoint = "vessel_dispose")]
-    public static void Dispose(IntPtr handle)
-    {
-        if (handle == IntPtr.Zero)
-            return;
+    [UnmanagedCallersOnly(EntryPoint = "vessel_dispose", CallConvs = [typeof(CallConvCdecl)])]
+    public static void Dispose(nint handle) => s_stores.Close(handle);
 
-        lock (s_disposeLock)
+    [UnmanagedCallersOnly(EntryPoint = "vessel_put", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError Put(nint handle, byte* key, byte* data, int length, int overwrite, NativeObjectInfo info, int codec, int level)
+        => PutBuffer(handle, key, data, length, overwrite, info, codec, level, null);
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_put_ex", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError PutEx(nint handle, byte* key, byte* data, long length, int overwrite, NativeObjectInfo info, int codec, int level, NativeMetadataResult* output)
+        => PutBuffer(handle, key, data, length, overwrite, info, codec, level, output);
+
+    private static VesselError PutBuffer(nint handle, byte* key, byte* data, long length, int overwrite, NativeObjectInfo info, int codec, int level, NativeMetadataResult* output)
+    {
+        if (output != null) *output = default;
+        if (key == null || length < 0 || (ulong)length > (ulong)nint.MaxValue || (length > 0 && data == null))
+            return VesselError.InvalidArgument;
+        if (!s_stores.TryRent(handle, out var store)) return HandleError(handle);
+        using (store)
         {
-            GCHandle gcHandle;
             try
             {
-                gcHandle = GCHandle.FromIntPtr(handle);
+                using Stream input = length == 0 ? Stream.Null : new UnmanagedMemoryStream(data, length);
+                var metadata = store.Value.PutAsync(Decode(key), input, overwrite != 0, Decode(info), (CompressionType)codec, (CompressionLevel)level)
+                    .GetAwaiter().GetResult();
+                if (output != null) *output = ExportResult(metadata);
+                return VesselError.Success;
             }
-            catch
-            {
-                return;
-            }
+            catch (Exception error) { return MapError(error); }
+        }
+    }
 
-            if (gcHandle.Target is VesselStorage storage)
-            {
-                try
-                {
-                    storage.Dispose();
-                }
-                catch
-                {
-                }
-            }
-
+    [UnmanagedCallersOnly(EntryPoint = "vessel_put_stream", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError PutStream(nint handle, byte* key, delegate* unmanaged[Cdecl]<void*, byte*, int, int> read, void* context,
+        int overwrite, NativeObjectInfo info, int codec, int level, NativeMetadataResult* output)
+    {
+        if (output != null) *output = default;
+        if (key == null || read == null) return VesselError.InvalidArgument;
+        if (!s_stores.TryRent(handle, out var store)) return HandleError(handle);
+        using (store)
+        {
             try
             {
-                gcHandle.Free();
+                var metadata = ReadInput(store.Value, Decode(key), overwrite != 0, Decode(info), (CompressionType)codec, (CompressionLevel)level, read, context);
+                if (output != null) *output = ExportResult(metadata);
+                return VesselError.Success;
             }
-            catch
-            {
-            }
+            catch (Exception error) { return MapError(error); }
         }
     }
 
-    [UnmanagedCallersOnly(EntryPoint = "vessel_put")]
-    public static VesselError Put(IntPtr handle, byte* keyPtr, byte* dataPtr, int dataLen, int overwrite, NativeObjectInfo info, int compType, int compLevel)
+    private static ObjectMetadata ReadInput(VesselStorage store, string key, bool overwrite, ObjectInfo info, CompressionType codec,
+        CompressionLevel level, delegate* unmanaged[Cdecl]<void*, byte*, int, int> read, void* context)
     {
-        if (handle == IntPtr.Zero || keyPtr == null)
-            return VesselError.InvalidArgument;
-
-        if (dataLen < 0 || (dataLen > 0 && dataPtr == null))
-            return VesselError.InvalidArgument;
-
-        if (!Enum.IsDefined(typeof(CompressionType), compType) ||
-            !Enum.IsDefined(typeof(CompressionLevel), compLevel))
-        {
-            return VesselError.InvalidArgument;
-        }
-
-        if (!TryGetStorage(handle, out VesselStorage? storage))
-            return VesselError.InvalidArgument;
-
+        var pipe = new Pipe(new PipeOptions(pauseWriterThreshold: 4 * ChunkSize, resumeWriterThreshold: 2 * ChunkSize, useSynchronizationContext: false));
+        using var cancellation = new CancellationTokenSource();
+        var consumer = NativeInput.ConsumeInputAsync(pipe.Reader, store, key, overwrite, info, codec, level, cancellation.Token);
+        ExceptionDispatchInfo? producerError = null;
         try
         {
-            string key = Marshal.PtrToStringUTF8((IntPtr)keyPtr)!;
-            if (string.IsNullOrWhiteSpace(key))
-                return VesselError.InvalidArgument;
-
-            var objInfo = new ObjectInfo(
-                Marshal.PtrToStringUTF8((IntPtr)info.FileName),
-                Marshal.PtrToStringUTF8((IntPtr)info.FileExtension),
-                Marshal.PtrToStringUTF8((IntPtr)info.MimeType)
-            );
-
-            using var stream = dataLen > 0
-                ? new UnmanagedMemoryStream(dataPtr, dataLen)
-                : Stream.Null;
-
-            Task.Run(() => storage.PutAsync(
-                key,
-                stream,
-                overwrite != 0,
-                objInfo,
-                (CompressionType)compType,
-                (CompressionLevel)compLevel,
-                CancellationToken.None)).GetAwaiter().GetResult();
-
-            return VesselError.Success;
-        }
-        catch (ArgumentException)
-        {
-            return VesselError.InvalidArgument;
-        }
-        catch (ObjectDisposedException)
-        {
-            return VesselError.Disposed;
-        }
-        catch (InvalidOperationException)
-        {
-            return VesselError.AlreadyExists;
-        }
-        catch (Exception)
-        {
-            return VesselError.UnknownError;
-        }
-    }
-
-    [UnmanagedCallersOnly(EntryPoint = "vessel_read")]
-    public static VesselError Read(IntPtr handle, byte* keyPtr, NativeVesselObject* outObj)
-    {
-        if (handle == IntPtr.Zero || keyPtr == null || outObj == null)
-            return VesselError.InvalidArgument;
-
-        if (!TryGetStorage(handle, out VesselStorage? storage))
-            return VesselError.InvalidArgument;
-
-        string key = Marshal.PtrToStringUTF8((IntPtr)keyPtr) ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(key))
-            return VesselError.InvalidArgument;
-
-        byte* nativeBuffer = null;
-        byte* checksumPtr = null;
-        byte* fileNamePtr = null;
-        byte* extensionPtr = null;
-        byte* mimeTypePtr = null;
-        long length = 0;
-
-        try
-        {
-            using VesselStream vStream = storage.GetStream(key);
-            length = vStream.Length;
-
-            if (length > 0)
+            while (!consumer.IsCompleted)
             {
-                nativeBuffer = (byte*)NativeMemory.Alloc((nuint)length);
-                using var nativeStream = new UnmanagedMemoryStream(nativeBuffer, length, length, FileAccess.Write);
-                vStream.CopyTo(nativeStream);
+                var buffer = pipe.Writer.GetMemory(ChunkSize)[..ChunkSize];
+                int count;
+                fixed (byte* data = buffer.Span)
+                    count = read(context, data, buffer.Length);
+
+                if (count == 0) break;
+                if (count == (int)VesselError.Cancelled) throw new OperationCanceledException();
+                if (count < 0) throw new IOException("The input callback reported an error.");
+                if (count > buffer.Length) throw new ArgumentOutOfRangeException(nameof(read), "The input callback returned more bytes than requested.");
+
+                pipe.Writer.Advance(count);
+                var flush = pipe.Writer.FlushAsync();
+                var result = flush.IsCompletedSuccessfully ? flush.Result : flush.AsTask().GetAwaiter().GetResult();
+                if (result.IsCompleted) break;
             }
-
-            checksumPtr = AllocNativeString(vStream.Checksum);
-            fileNamePtr = AllocNativeString(vStream.FileName);
-            extensionPtr = AllocNativeString(vStream.Extension);
-            mimeTypePtr = AllocNativeString(vStream.MimeType);
-
-            *outObj = new NativeVesselObject
-            {
-                Data = nativeBuffer,
-                Length = length,
-                Checksum = checksumPtr,
-                FileName = fileNamePtr,
-                Extension = extensionPtr,
-                MimeType = mimeTypePtr
-            };
-
-            nativeBuffer = null;
-            checksumPtr = null;
-            fileNamePtr = null;
-            extensionPtr = null;
-            mimeTypePtr = null;
-
-            return VesselError.Success;
         }
-        catch (FileNotFoundException)
+        catch (Exception error)
         {
-            return VesselError.NotFound;
-        }
-        catch (ArgumentException)
-        {
-            return VesselError.InvalidArgument;
-        }
-        catch (ObjectDisposedException)
-        {
-            return VesselError.Disposed;
-        }
-        catch (Exception)
-        {
-            return VesselError.UnknownError;
+            producerError = ExceptionDispatchInfo.Capture(error);
+            cancellation.Cancel();
         }
         finally
         {
-            if (nativeBuffer != null) NativeMemory.Free(nativeBuffer);
-            FreeNativeString(checksumPtr);
-            FreeNativeString(fileNamePtr);
-            FreeNativeString(extensionPtr);
-            FreeNativeString(mimeTypePtr);
+            pipe.Writer.Complete();
+        }
+
+        try { return consumer.GetAwaiter().GetResult(); }
+        finally { producerError?.Throw(); }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_read", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError Read(nint handle, byte* key, NativeVesselObject* output)
+    {
+        if (output == null) return VesselError.InvalidArgument;
+        *output = default;
+        if (key == null) return VesselError.InvalidArgument;
+        if (!s_stores.TryRent(handle, out var store)) return HandleError(handle);
+        using (store)
+        {
+            NativeVesselObject result = default;
+            try
+            {
+                using var stream = store.Value.GetStream(Decode(key));
+                if (stream.Length > WholeReadLimit) return VesselError.LimitExceeded;
+                result.Length = stream.Length;
+                if (stream.Length != 0)
+                {
+                    result.Data = (byte*)NativeMemory.Alloc((nuint)stream.Length);
+                    stream.ReadExactly(new Span<byte>(result.Data, (int)stream.Length));
+                }
+                if (stream.ReadByte() != -1) throw new InvalidDataException("The object exceeds its declared length.");
+
+                var payload = new ReadOnlySpan<byte>(result.Data, (int)stream.Length);
+                if (Convert.ToHexStringLower(SHA256.HashData(payload)) != stream.Checksum)
+                    throw new InvalidDataException("The object does not match its content checksum.");
+
+                result.Checksum = AllocateString(stream.Checksum);
+                result.FileName = AllocateString(stream.FileName);
+                result.Extension = AllocateString(stream.Extension);
+                result.MimeType = AllocateString(stream.MimeType);
+                *output = result;
+                result = default;
+                return VesselError.Success;
+            }
+            catch (Exception error) { return MapError(error); }
+            finally { ClearObject(&result); }
         }
     }
 
-    [UnmanagedCallersOnly(EntryPoint = "vessel_get_metadata")]
-    public static VesselError GetMetadata(IntPtr handle, byte* keyPtr, NativeObjectMetadata* outMetadata)
+    [UnmanagedCallersOnly(EntryPoint = "vessel_get_metadata", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError GetMetadata(nint handle, byte* key, NativeObjectMetadata* output)
+        => FindMetadata(handle, key, output, null);
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_get_metadata_ex", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError GetMetadataEx(nint handle, byte* key, NativeMetadataResult* output)
+        => output == null ? VesselError.InvalidArgument : FindMetadata(handle, key, &output->Metadata, &output->CreationDateUnixMs);
+
+    private static VesselError FindMetadata(nint handle, byte* key, NativeObjectMetadata* output, long* createdMs)
     {
-        if (handle == IntPtr.Zero || keyPtr == null || outMetadata == null)
-            return VesselError.InvalidArgument;
+        if (output == null) return VesselError.InvalidArgument;
+        *output = default;
+        if (createdMs != null) *createdMs = 0;
+        if (key == null) return VesselError.InvalidArgument;
+        if (!s_stores.TryRent(handle, out var store)) return HandleError(handle);
+        using (store)
+        {
+            try
+            {
+                if (store.Value.GetMetadata(Decode(key)) is not { } metadata) return VesselError.NotFound;
+                *output = ExportMetadata(metadata);
+                if (createdMs != null) *createdMs = metadata.CreationDate.ToUnixTimeMilliseconds();
+                return VesselError.Success;
+            }
+            catch (Exception error) { return MapError(error); }
+        }
+    }
 
-        if (!TryGetStorage(handle, out VesselStorage? storage))
-            return VesselError.InvalidArgument;
+    [UnmanagedCallersOnly(EntryPoint = "vessel_delete", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError Delete(nint handle, byte* key, int* output)
+    {
+        if (output == null) return VesselError.InvalidArgument;
+        *output = 0;
+        if (key == null) return VesselError.InvalidArgument;
+        if (!s_stores.TryRent(handle, out var store)) return HandleError(handle);
+        using (store)
+        {
+            try
+            {
+                *output = store.Value.DeleteAsync(Decode(key)).GetAwaiter().GetResult() ? 1 : 0;
+                return VesselError.Success;
+            }
+            catch (Exception error) { return MapError(error); }
+        }
+    }
 
-        string key = Marshal.PtrToStringUTF8((IntPtr)keyPtr) ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(key))
-            return VesselError.InvalidArgument;
+    [UnmanagedCallersOnly(EntryPoint = "vessel_get_all_keys", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError GetAllKeys(nint handle, byte* prefix, delegate* unmanaged[Cdecl]<byte*, void> callback)
+        => EnumerateKeys(handle, prefix, callback, null, null);
 
-        byte* keyPtrOut = null;
-        byte* hashPtr = null;
-        byte* eTagPtr = null;
-        byte* fileNamePtr = null;
-        byte* extensionPtr = null;
-        byte* mimeTypePtr = null;
+    [UnmanagedCallersOnly(EntryPoint = "vessel_get_all_keys_ex", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError GetAllKeysEx(nint handle, byte* prefix, delegate* unmanaged[Cdecl]<void*, byte*, int> callback, void* context)
+        => EnumerateKeys(handle, prefix, null, callback, context);
+
+    private static VesselError EnumerateKeys(nint handle, byte* prefix, delegate* unmanaged[Cdecl]<byte*, void> legacy,
+        delegate* unmanaged[Cdecl]<void*, byte*, int> callback, void* context)
+    {
+        if (legacy == null && callback == null) return VesselError.InvalidArgument;
+        if (!s_stores.TryRent(handle, out var store)) return HandleError(handle);
+        using (store)
+        {
+            try
+            {
+                foreach (var key in store.Value.GetAllKeys(prefix == null ? "" : Decode(prefix)))
+                {
+                    var buffer = ArrayPool<byte>.Shared.Rent(checked(s_utf8.GetByteCount(key) + 1));
+                    try
+                    {
+                        buffer[s_utf8.GetBytes(key, buffer)] = 0;
+                        fixed (byte* text = buffer)
+                        {
+                            if (legacy != null)
+                            {
+                                legacy(text);
+                                continue;
+                            }
+                            var status = callback(context, text);
+                            if (status > 0) break;
+                            if (status < 0) return VesselError.Cancelled;
+                        }
+                    }
+                    finally { ArrayPool<byte>.Shared.Return(buffer); }
+                }
+                return VesselError.Success;
+            }
+            catch (Exception error) { return MapError(error); }
+        }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_open", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError StreamOpen(nint handle, byte* key, nint* output)
+    {
+        if (output == null) return VesselError.InvalidArgument;
+        *output = 0;
+        if (key == null) return VesselError.InvalidArgument;
+        if (!s_stores.TryRent(handle, out var store)) return HandleError(handle);
+        using (store)
+        {
+            try
+            {
+                *output = s_streams.Add(store.Value.GetStream(Decode(key)));
+                return VesselError.Success;
+            }
+            catch (Exception error) { return MapError(error); }
+        }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_read", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError StreamRead(nint handle, byte* buffer, int count, int* bytesRead)
+    {
+        if (bytesRead == null) return VesselError.InvalidArgument;
+        *bytesRead = 0;
+        if (count < 0 || (count > 0 && buffer == null)) return VesselError.InvalidArgument;
+        if (!s_streams.TryRent(handle, out var stream)) return HandleError(handle);
+        using (stream)
+        {
+            try
+            {
+                lock (stream.Value)
+                    *bytesRead = stream.Value.Read(new Span<byte>(buffer, count));
+                return VesselError.Success;
+            }
+            catch (Exception error) { return MapError(error); }
+        }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_length", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError StreamLength(nint handle, long* length) => GetStreamValue(handle, length, static stream => stream.Length);
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_position", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError StreamPosition(nint handle, long* position) => GetStreamValue(handle, position, static stream => stream.Position);
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_can_seek", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError StreamCanSeek(nint handle, int* output)
+        => GetStreamValue(handle, output, static stream => stream.CanSeek ? 1 : 0);
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_get_metadata", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError StreamGetMetadata(nint handle, NativeMetadataResult* output)
+        => GetStreamValue(handle, output, static stream => ExportResult(stream.Metadata!.Value));
+
+    private static VesselError GetStreamValue<T>(nint handle, T* output, Func<VesselStream, T> read) where T : unmanaged
+    {
+        if (output == null) return VesselError.InvalidArgument;
+        *output = default;
+        if (!s_streams.TryRent(handle, out var stream)) return HandleError(handle);
+        using (stream)
+        {
+            try
+            {
+                lock (stream.Value) *output = read(stream.Value);
+                return VesselError.Success;
+            }
+            catch (Exception error) { return MapError(error); }
+        }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_seek", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError StreamSeek(nint handle, long offset, int origin)
+    {
+        if ((uint)origin > (uint)SeekOrigin.End) return VesselError.InvalidArgument;
+        if (!s_streams.TryRent(handle, out var stream)) return HandleError(handle);
+        using (stream)
+        {
+            try
+            {
+                lock (stream.Value) stream.Value.Seek(offset, (SeekOrigin)origin);
+                return VesselError.Success;
+            }
+            catch (Exception error) { return MapError(error); }
+        }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_close", CallConvs = [typeof(CallConvCdecl)])]
+    public static void StreamClose(nint handle) => s_streams.Close(handle);
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_free_object", CallConvs = [typeof(CallConvCdecl)])]
+    public static void FreeObject(NativeVesselObject* output) => ClearObject(output);
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_free_metadata", CallConvs = [typeof(CallConvCdecl)])]
+    public static void FreeMetadata(NativeObjectMetadata* output) => ClearMetadata(output);
+
+    private static NativeMetadataResult ExportResult(ObjectMetadata metadata)
+        => new() { Metadata = ExportMetadata(metadata), CreationDateUnixMs = metadata.CreationDate.ToUnixTimeMilliseconds() };
+
+    private static NativeObjectMetadata ExportMetadata(ObjectMetadata metadata)
+    {
+        var result = new NativeObjectMetadata
+        {
+            OriginalSize = metadata.OriginalSize,
+            CompressedSize = metadata.CompressedSize,
+            CompressionType = (int)metadata.CompressionType,
+            CreationDateUnix = metadata.CreationDate.ToUnixTimeSeconds()
+        };
 
         try
         {
-            var md = storage.GetMetadata(key);
-            if (md == null)
-                return VesselError.NotFound;
-
-            var metadata = md.Value;
-
-            keyPtrOut = AllocNativeString(metadata.Key);
-            hashPtr = AllocNativeString(metadata.Hash);
-            eTagPtr = AllocNativeString(metadata.ETag);
-            fileNamePtr = AllocNativeString(metadata.FileName);
-            extensionPtr = AllocNativeString(metadata.Extension);
-            mimeTypePtr = AllocNativeString(metadata.MimeType);
-
-            *outMetadata = new NativeObjectMetadata
-            {
-                OriginalSize = metadata.OriginalSize,
-                CompressedSize = metadata.CompressedSize,
-                CompressionType = (int)metadata.CompressionType,
-                CreationDateUnix = metadata.CreationDate.ToUnixTimeSeconds(),
-                Key = keyPtrOut,
-                Hash = hashPtr,
-                ETag = eTagPtr,
-                FileName = fileNamePtr,
-                Extension = extensionPtr,
-                MimeType = mimeTypePtr
-            };
-
-            keyPtrOut = null;
-            hashPtr = null;
-            eTagPtr = null;
-            fileNamePtr = null;
-            extensionPtr = null;
-            mimeTypePtr = null;
-
-            return VesselError.Success;
+            result.Key = AllocateString(metadata.Key);
+            result.Hash = AllocateString(metadata.Hash);
+            result.ETag = AllocateString(metadata.ETag);
+            result.FileName = AllocateString(metadata.FileName);
+            result.Extension = AllocateString(metadata.Extension);
+            result.MimeType = AllocateString(metadata.MimeType);
+            return result;
         }
-        catch (ArgumentException)
+        catch
         {
-            return VesselError.InvalidArgument;
+            ClearMetadata(&result);
+            throw;
         }
-        catch (ObjectDisposedException)
+    }
+
+    private static void ClearObject(NativeVesselObject* output)
+    {
+        if (output == null) return;
+        NativeMemory.Free(output->Data);
+        NativeMemory.Free(output->Checksum);
+        NativeMemory.Free(output->FileName);
+        NativeMemory.Free(output->Extension);
+        NativeMemory.Free(output->MimeType);
+        *output = default;
+    }
+
+    private static void ClearMetadata(NativeObjectMetadata* output)
+    {
+        if (output == null) return;
+        NativeMemory.Free(output->Key);
+        NativeMemory.Free(output->Hash);
+        NativeMemory.Free(output->ETag);
+        NativeMemory.Free(output->FileName);
+        NativeMemory.Free(output->Extension);
+        NativeMemory.Free(output->MimeType);
+        *output = default;
+    }
+
+    private static string Decode(byte* text) => s_utf8.GetString(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(text));
+    private static string? DecodeOptional(byte* text) => text == null ? null : Decode(text);
+    private static ObjectInfo Decode(NativeObjectInfo info)
+        => new(DecodeOptional(info.FileName), DecodeOptional(info.FileExtension), DecodeOptional(info.MimeType));
+
+    private static byte* AllocateString(string? value)
+    {
+        if (value is null) return null;
+        var size = checked(s_utf8.GetByteCount(value) + 1);
+        var data = (byte*)NativeMemory.Alloc((nuint)size);
+        s_utf8.GetBytes(value, new Span<byte>(data, size - 1));
+        data[size - 1] = 0;
+        return data;
+    }
+
+    private static VesselError HandleError(nint handle) => handle == 0 ? VesselError.InvalidArgument : VesselError.Disposed;
+
+    private static VesselError MapError(Exception error) => error switch
+    {
+        OperationCanceledException => VesselError.Cancelled,
+        OutOfMemoryException => VesselError.OutOfMemory,
+        ArgumentException => VesselError.InvalidArgument,
+        FileNotFoundException => VesselError.NotFound,
+        ObjectDisposedException => VesselError.Disposed,
+        InvalidOperationException invalid when VesselStorage.IsAlreadyExists(invalid) => VesselError.AlreadyExists,
+        InvalidOperationException or NotSupportedException => VesselError.InvalidOperation,
+        IOException or UnauthorizedAccessException or InvalidDataException => VesselError.IoError,
+        _ => VesselError.UnknownError
+    };
+
+    private sealed class NativeLogger(delegate* unmanaged[Cdecl]<void*, int, byte*, void> callback, void* context) : IVesselLogger
+    {
+        public void Log(VesselLogLevel level, string message, Exception? error)
         {
-            return VesselError.Disposed;
+            var text = AllocateString(message);
+            try { callback(context, (int)level, text); }
+            finally { NativeMemory.Free(text); }
         }
-        catch (Exception)
+    }
+}
+
+internal static class NativeInput
+{
+    internal static async Task<ObjectMetadata> ConsumeInputAsync(PipeReader reader, VesselStorage store, string key, bool overwrite,
+        ObjectInfo info, CompressionType codec, CompressionLevel level, CancellationToken cancellationToken)
+    {
+        try
         {
-            return VesselError.UnknownError;
+            using var input = reader.AsStream(leaveOpen: true);
+            return await store.PutAsync(key, input, overwrite, info, codec, level, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            FreeNativeString(keyPtrOut);
-            FreeNativeString(hashPtr);
-            FreeNativeString(eTagPtr);
-            FreeNativeString(fileNamePtr);
-            FreeNativeString(extensionPtr);
-            FreeNativeString(mimeTypePtr);
-        }
-    }
-
-    [UnmanagedCallersOnly(EntryPoint = "vessel_delete")]
-    public static VesselError Delete(IntPtr handle, byte* keyPtr, int* outDeleted)
-    {
-        if (handle == IntPtr.Zero || keyPtr == null || outDeleted == null)
-            return VesselError.InvalidArgument;
-
-        if (!TryGetStorage(handle, out VesselStorage? storage))
-            return VesselError.InvalidArgument;
-
-        try
-        {
-            string key = Marshal.PtrToStringUTF8((IntPtr)keyPtr)!;
-            if (string.IsNullOrWhiteSpace(key))
-                return VesselError.InvalidArgument;
-
-            bool deleted = Task.Run(() => storage.DeleteAsync(key, CancellationToken.None))
-                .GetAwaiter().GetResult();
-
-            *outDeleted = deleted ? 1 : 0;
-            return VesselError.Success;
-        }
-        catch (ArgumentException)
-        {
-            return VesselError.InvalidArgument;
-        }
-        catch (ObjectDisposedException)
-        {
-            return VesselError.Disposed;
-        }
-        catch (Exception)
-        {
-            return VesselError.UnknownError;
-        }
-    }
-
-    [UnmanagedCallersOnly(EntryPoint = "vessel_get_all_keys")]
-    public static VesselError GetAllKeys(IntPtr handle, byte* prefixPtr, delegate* unmanaged<byte*, void> callback)
-    {
-        if (handle == IntPtr.Zero || callback == null)
-            return VesselError.InvalidArgument;
-
-        if (prefixPtr == null)
-            return VesselError.InvalidArgument;
-
-        if (!TryGetStorage(handle, out VesselStorage? storage))
-            return VesselError.InvalidArgument;
-
-        try
-        {
-            string prefix = Marshal.PtrToStringUTF8((IntPtr)prefixPtr) ?? string.Empty;
-
-            foreach (string key in storage.GetAllKeys(prefix))
-            {
-                IntPtr keyNative = Marshal.StringToCoTaskMemUTF8(key);
-                try
-                {
-                    callback((byte*)keyNative);
-                }
-                finally
-                {
-                    Marshal.FreeCoTaskMem(keyNative);
-                }
-            }
-
-            return VesselError.Success;
-        }
-        catch (ObjectDisposedException)
-        {
-            return VesselError.Disposed;
-        }
-        catch (Exception)
-        {
-            return VesselError.UnknownError;
-        }
-    }
-
-    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_open")]
-    public static VesselError StreamOpen(IntPtr handle, byte* keyPtr, IntPtr* outStreamHandle)
-    {
-        if (handle == IntPtr.Zero || keyPtr == null || outStreamHandle == null)
-            return VesselError.InvalidArgument;
-
-        if (!TryGetStorage(handle, out VesselStorage? storage))
-            return VesselError.InvalidArgument;
-
-        string key = Marshal.PtrToStringUTF8((IntPtr)keyPtr) ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(key))
-            return VesselError.InvalidArgument;
-
-        try
-        {
-            VesselStream stream = storage.GetStream(key);
-            GCHandle gcHandle = GCHandle.Alloc(stream);
-            *outStreamHandle = GCHandle.ToIntPtr(gcHandle);
-            return VesselError.Success;
-        }
-        catch (FileNotFoundException)
-        {
-            return VesselError.NotFound;
-        }
-        catch (ArgumentException)
-        {
-            return VesselError.InvalidArgument;
-        }
-        catch (ObjectDisposedException)
-        {
-            return VesselError.Disposed;
-        }
-        catch (Exception)
-        {
-            return VesselError.UnknownError;
-        }
-    }
-
-    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_read")]
-    public static VesselError StreamRead(IntPtr streamHandle, byte* buffer, int count, int* outBytesRead)
-    {
-        if (streamHandle == IntPtr.Zero || buffer == null || outBytesRead == null)
-            return VesselError.InvalidArgument;
-
-        if (count < 0)
-            return VesselError.InvalidArgument;
-
-        if (!TryGetStream(streamHandle, out VesselStream? stream))
-            return VesselError.InvalidArgument;
-
-        try
-        {
-            int read = stream.Read(new Span<byte>(buffer, count));
-            *outBytesRead = read;
-            return VesselError.Success;
-        }
-        catch (ObjectDisposedException)
-        {
-            return VesselError.Disposed;
-        }
-        catch (NotSupportedException)
-        {
-            return VesselError.UnknownError;
-        }
-        catch (Exception)
-        {
-            return VesselError.UnknownError;
-        }
-    }
-
-    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_length")]
-    public static VesselError StreamLength(IntPtr streamHandle, long* outLength)
-    {
-        if (streamHandle == IntPtr.Zero || outLength == null)
-            return VesselError.InvalidArgument;
-
-        if (!TryGetStream(streamHandle, out VesselStream? stream))
-            return VesselError.InvalidArgument;
-
-        try
-        {
-            *outLength = stream.Length;
-            return VesselError.Success;
-        }
-        catch (ObjectDisposedException)
-        {
-            return VesselError.Disposed;
-        }
-        catch (NotSupportedException)
-        {
-            return VesselError.UnknownError;
-        }
-        catch (Exception)
-        {
-            return VesselError.UnknownError;
-        }
-    }
-
-    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_position")]
-    public static VesselError StreamPosition(IntPtr streamHandle, long* outPosition)
-    {
-        if (streamHandle == IntPtr.Zero || outPosition == null)
-            return VesselError.InvalidArgument;
-
-        if (!TryGetStream(streamHandle, out VesselStream? stream))
-            return VesselError.InvalidArgument;
-
-        try
-        {
-            *outPosition = stream.Position;
-            return VesselError.Success;
-        }
-        catch (ObjectDisposedException)
-        {
-            return VesselError.Disposed;
-        }
-        catch (NotSupportedException)
-        {
-            return VesselError.UnknownError;
-        }
-        catch (Exception)
-        {
-            return VesselError.UnknownError;
-        }
-    }
-
-    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_seek")]
-    public static VesselError StreamSeek(IntPtr streamHandle, long offset, int origin)
-    {
-        if (streamHandle == IntPtr.Zero)
-            return VesselError.InvalidArgument;
-
-        if (origin < 0 || origin > 2)
-            return VesselError.InvalidArgument;
-
-        if (!TryGetStream(streamHandle, out VesselStream? stream))
-            return VesselError.InvalidArgument;
-
-        try
-        {
-            stream.Seek(offset, (SeekOrigin)origin);
-            return VesselError.Success;
-        }
-        catch (ObjectDisposedException)
-        {
-            return VesselError.Disposed;
-        }
-        catch (NotSupportedException)
-        {
-            return VesselError.UnknownError;
-        }
-        catch (IOException)
-        {
-            return VesselError.UnknownError;
-        }
-        catch (Exception)
-        {
-            return VesselError.UnknownError;
-        }
-    }
-
-    [UnmanagedCallersOnly(EntryPoint = "vessel_stream_close")]
-    public static void StreamClose(IntPtr streamHandle)
-    {
-        if (streamHandle == IntPtr.Zero)
-            return;
-
-        try
-        {
-            GCHandle gcHandle = GCHandle.FromIntPtr(streamHandle);
-            if (gcHandle.Target is VesselStream stream)
-            {
-                try
-                {
-                    stream.Dispose();
-                }
-                catch
-                {
-                }
-            }
-            gcHandle.Free();
-        }
-        catch
-        {
-        }
-    }
-
-    [UnmanagedCallersOnly(EntryPoint = "vessel_free_object")]
-    public static void FreeObject(NativeVesselObject* obj)
-    {
-        if (obj == null)
-            return;
-
-        if (obj->Data != null)
-        {
-            NativeMemory.Free(obj->Data);
-            obj->Data = null;
-        }
-
-        FreeAndClear(ref obj->Checksum);
-        FreeAndClear(ref obj->FileName);
-        FreeAndClear(ref obj->Extension);
-        FreeAndClear(ref obj->MimeType);
-    }
-
-    [UnmanagedCallersOnly(EntryPoint = "vessel_free_metadata")]
-    public static void FreeMetadata(NativeObjectMetadata* metadata)
-    {
-        if (metadata == null)
-            return;
-
-        FreeAndClear(ref metadata->Key);
-        FreeAndClear(ref metadata->Hash);
-        FreeAndClear(ref metadata->ETag);
-        FreeAndClear(ref metadata->FileName);
-        FreeAndClear(ref metadata->Extension);
-        FreeAndClear(ref metadata->MimeType);
-    }
-
-    private static bool TryGetStorage(IntPtr handle, [NotNullWhen(true)] out VesselStorage? storage)
-    {
-        storage = null;
-        if (handle == IntPtr.Zero)
-            return false;
-
-        try
-        {
-            GCHandle gcHandle = GCHandle.FromIntPtr(handle);
-            if (gcHandle.Target is VesselStorage s)
-            {
-                storage = s;
-                return true;
-            }
-        }
-        catch
-        {
-        }
-        return false;
-    }
-
-    private static bool TryGetStream(IntPtr streamHandle, [NotNullWhen(true)] out VesselStream? stream)
-    {
-        stream = null;
-        if (streamHandle == IntPtr.Zero)
-            return false;
-
-        try
-        {
-            GCHandle gcHandle = GCHandle.FromIntPtr(streamHandle);
-            if (gcHandle.Target is VesselStream s)
-            {
-                stream = s;
-                return true;
-            }
-        }
-        catch
-        {
-        }
-        return false;
-    }
-
-    private static byte* AllocNativeString(string? str)
-    {
-        if (str == null)
-            return null;
-
-        int size = Encoding.UTF8.GetByteCount(str) + 1;
-        byte* ptr = (byte*)NativeMemory.Alloc((nuint)size);
-
-        fixed (char* pStr = str)
-        {
-            Encoding.UTF8.GetBytes(pStr, str.Length, ptr, size - 1);
-        }
-        ptr[size - 1] = 0;
-        return ptr;
-    }
-
-    private static void FreeNativeString(byte* ptr)
-    {
-        if (ptr != null)
-            NativeMemory.Free(ptr);
-    }
-
-    private static void FreeAndClear(ref byte* ptr)
-    {
-        if (ptr != null)
-        {
-            NativeMemory.Free(ptr);
-            ptr = null;
+            await reader.CompleteAsync().ConfigureAwait(false);
         }
     }
 }

@@ -42,6 +42,7 @@
 
 	<ItemGroup>
 	  <InternalsVisibleTo Include="Vessel.Core.UnitTests" />
+	  <InternalsVisibleTo Include="vessel" />
 	</ItemGroup>
 
 </Project>

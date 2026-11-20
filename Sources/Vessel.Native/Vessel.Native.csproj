@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
@@ -21,7 +21,7 @@
 	<ItemGroup Condition="'$(Configuration)' == 'Release'">
 		<None Include="vessel.h">
 			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-			<TargetPath>..\native\vessel.h</TargetPath>
+			<TargetPath>vessel.h</TargetPath>
 		</None>
 	</ItemGroup>
 
