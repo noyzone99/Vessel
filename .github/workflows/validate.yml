@@ -119,10 +119,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           $architecture = if ($env:RUNNER_ARCH -eq 'ARM64') { 'arm64' } else { 'amd64' }
+          $component = if ($architecture -eq 'arm64') {
+              'Microsoft.VisualStudio.Component.VC.Tools.ARM64'
+          } else {
+              'Microsoft.VisualStudio.Component.VC.Tools.x86.x64'
+          }
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-          $visualStudio = & $vswhere -latest -products '*' -property installationPath
+          $visualStudio = & $vswhere -latest -products '*' -requires $component -property installationPath
           $devShell = Join-Path $visualStudio 'Common7/Tools/Launch-VsDevShell.ps1'
           & $devShell -Arch $architecture -HostArch $architecture -SkipAutomaticLocation
+
+          if ($env:VESSEL_RID -eq 'win-x64') {
+              python .github/scripts/build_static_native.py win-x64 artifacts/native-static
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
           $source = 'Tests/Vessel.Native.Tests/smoke.c'
           $store = Join-Path $env:RUNNER_TEMP 'vessel-c-store'
@@ -138,6 +148,9 @@ jobs:
       - name: Test C and Python clients on glibc and macOS
         if: runner.os != 'Windows' && !contains(matrix.rid, '-musl-')
         run: sh Tests/Vessel.Native.Tests/smoke.sh "$VESSEL_BUILD_DIR/publish/$VESSEL_LIBRARY"
+      - name: Build and test the static library on Linux glibc x64
+        if: matrix.rid == 'linux-x64'
+        run: python .github/scripts/build_static_native.py linux-x64 artifacts/native-static
       - name: Build and test the musl library in Alpine
         if: contains(matrix.rid, '-musl-')
         run: |
@@ -166,15 +179,23 @@ jobs:
         if: ${{ !contains(matrix.rid, '-musl-') }}
         shell: pwsh
         run: Copy-Item -LiteralPath LICENSE -Destination "$env:VESSEL_BUILD_DIR/publish/"
-      - name: Upload the tested native library
+      - name: Upload the tested dynamic library
         uses: actions/upload-artifact@v6
         with:
-          name: vessel-native-${{ matrix.target }}-${{ needs.version.outputs.value }}
+          name: vessel-native-dynamic-${{ matrix.target }}-${{ needs.version.outputs.value }}
           path: |
             ${{ env.VESSEL_BUILD_DIR }}/publish/${{ matrix.library }}
             ${{ env.VESSEL_BUILD_DIR }}/publish/vessel.h
             ${{ env.VESSEL_BUILD_DIR }}/publish/vessel.lib
             ${{ env.VESSEL_BUILD_DIR }}/publish/LICENSE
+          if-no-files-found: error
+          overwrite: true
+      - name: Upload the tested static library
+        if: matrix.rid == 'win-x64' || matrix.rid == 'linux-x64'
+        uses: actions/upload-artifact@v6
+        with:
+          name: vessel-native-static-${{ matrix.target }}-${{ needs.version.outputs.value }}
+          path: artifacts/native-static/
           if-no-files-found: error
           overwrite: true
       - name: Run the quick benchmark profile

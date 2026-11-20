@@ -14,7 +14,24 @@ To try a version before publication, use a project reference to `Sources/Vessel.
 
 ## Write and read an object
 
-Replace `Program.cs` with the [C# quick start](../../../README.md#quick-start) and run `dotnet run`. It prints `Hello from Vessel!` and creates a `my-store` directory under the current working directory. `overwrite: true` lets you run the example again with the same key.
+Replace `Program.cs` with the following example.
+
+~~~csharp
+using System;
+using System.IO;
+using System.Text;
+using Vessel;
+
+using var storage = new VesselStorage("my-store");
+using var input = new MemoryStream(Encoding.UTF8.GetBytes("Hello from Vessel!"));
+var metadata = await storage.PutAsync("documents/hello.txt", input, overwrite: true);
+
+await using var content = storage.GetStream(metadata.Key);
+using var reader = new StreamReader(content, Encoding.UTF8, leaveOpen: true);
+Console.WriteLine(await reader.ReadToEndAsync());
+~~~
+
+Run `dotnet run`. It prints `Hello from Vessel!` and creates a `my-store` directory under the current working directory. `overwrite: true` lets you run the example again with the same key.
 
 Pass any readable stream to `PutAsync`, including a stream that cannot seek. Vessel reads from its current position to the end and leaves disposal to the caller. `GetStream` returns a read-only stream that owns an open reader for one object version. Dispose it when you finish reading.
 

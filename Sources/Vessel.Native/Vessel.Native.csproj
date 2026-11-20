@@ -32,4 +32,10 @@
 		<ProjectReference Include="..\Vessel.Core\Vessel.Core.csproj" />
 	</ItemGroup>
 
+	<Target Name="WriteVesselStaticLinkInputs" AfterTargets="LinkNative"
+		Condition="'$(NativeLib)' == 'Static' and '$(VesselStaticLinkInputs)' != ''">
+		<WriteLinesToFile File="$(VesselStaticLinkInputs)" Overwrite="true"
+			Lines="archive|$(NativeObject);@(NativeLibrary->'archive|%(FullPath)');@(SdkNativeLibrary->'system|%(Identity)');@(NativeSystemLibrary->'system|%(Identity)');runtime|$(IlcSdkPath)" />
+	</Target>
+
 </Project>

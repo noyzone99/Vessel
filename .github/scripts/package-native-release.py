@@ -33,18 +33,31 @@ def main() -> None:
                 parser.error(f"{wheel.name} is missing {library_name(rid)}")
         shutil.copy2(wheel, args.release / wheel.name)
 
-    files_by_platform = {
+    dynamic_files = {
         "windows": ("vessel.dll", "vessel.lib"),
         "linux": ("libvessel.so",),
         "macos": ("libvessel.dylib",),
     }
-    native_artifacts = sorted(args.artifacts.glob(f"vessel-native-*-{args.version}"))
-    if not native_artifacts:
-        parser.error("No native artifacts found for the release")
+    dynamic_artifacts = sorted(args.artifacts.glob(f"vessel-native-dynamic-*-{args.version}"))
+    if len(dynamic_artifacts) != len(PLATFORM_TAGS):
+        parser.error(f"Expected {len(PLATFORM_TAGS)} dynamic library artifacts")
+    static_files = {
+        f"vessel-native-static-windows-x64-{args.version}": "vessel_static.lib",
+        f"vessel-native-static-linux-glibc-x64-{args.version}": "libvessel.a",
+    }
 
-    for artifact in native_artifacts:
-        platform = artifact.name.removeprefix("vessel-native-").split("-", 1)[0]
-        files = (*files_by_platform[platform], "vessel.h", "LICENSE")
+    for artifact in [*dynamic_artifacts, *(args.artifacts / name for name in static_files)]:
+        if artifact.name in static_files:
+            binaries = (
+                static_files[artifact.name],
+                "vessel-link.rsp",
+                "DOTNET-LICENSE.txt",
+                "DOTNET-THIRD-PARTY-NOTICES.txt",
+            )
+        else:
+            platform = artifact.name.removeprefix("vessel-native-dynamic-").split("-", 1)[0]
+            binaries = dynamic_files[platform]
+        files = (*binaries, "vessel.h", "LICENSE")
         for file in files:
             if not (artifact / file).is_file():
                 parser.error(f"Missing {file} from {artifact.name}")

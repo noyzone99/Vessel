@@ -14,40 +14,23 @@ Vessel is designed to keep memory use predictable while streaming large objects 
 - **Control disk usage.** Choose LZ4, Zstd or uncompressed storage for each object. Identical payloads written with the same codec share a blob.
 - **Embed the same engine across languages.** Use the managed library from .NET 8 or .NET 10, or load the NativeAOT shared library through its C ABI.
 
-## Quick start
+## Getting started
 
-Reference `Vessel.Core` from a .NET 8 or .NET 10 console project, then put this in `Program.cs`. It creates `my-store`, writes a text object and reads it back.
-
-~~~csharp
-using System;
-using System.IO;
-using System.Text;
-using Vessel;
-
-using var storage = new VesselStorage("my-store");
-using var input = new MemoryStream(Encoding.UTF8.GetBytes("Hello from Vessel!"));
-var metadata = await storage.PutAsync("documents/hello.txt", input, overwrite: true);
-
-await using var content = storage.GetStream(metadata.Key);
-using var reader = new StreamReader(content, Encoding.UTF8, leaveOpen: true);
-Console.WriteLine(await reader.ReadToEndAsync());
-~~~
-
-Follow the [C# guide](Docs/UserGuide/CSharp/README.md) to set up a project, the [C guide](Docs/UserGuide/C/README.md) to link a native client, or the [Python guide](Docs/UserGuide/Python/README.md) to install `vessel-storage` with its bundled native library.
+- [C#](Docs/UserGuide/CSharp/README.md) uses `Vessel.Core` on .NET 8 or .NET 10.
+- [C](Docs/UserGuide/C/README.md) uses `vessel.h` and the native library.
+- [Python](Docs/UserGuide/Python/README.md) uses the `vessel-storage` wheel with its bundled native library.
 
 For published versions, find the native C archives, NuGet package and Python wheels in [GitHub Releases](https://github.com/noyzone99/Vessel/releases). The [user guide](Docs/UserGuide/README.md) also links to NuGet.org and PyPI.
 
 ## Build from source
 
-Install the .NET 10 SDK and run these commands from the repository root. The last command publishes the native library for Windows x64 and requires the target C++ toolchain. Choose a runtime identifier matching your target system for other builds.
+Install the .NET 10 SDK selected by [`global.json`](global.json). Building the native library also requires the target platform's C/C++ toolchain. Use the Visual Studio **Desktop development with C++** workload on Windows, Clang and `zlib1g-dev` on Ubuntu, or the Xcode toolchain on macOS. The [source build guide](Docs/UserGuide/BuildFromSource.md#build-the-shared-library) also covers Alpine Linux and the supported runtime identifiers.
 
-~~~sh
-dotnet build Vessel.slnx -c Release
-dotnet pack Sources/Vessel.Core -c Release
-dotnet publish Sources/Vessel.Native -c Release -r win-x64
-~~~
+Run `dotnet build Vessel.slnx -c Release` from the repository root to build the .NET solution. To build the packages and native library, follow the instructions for your language.
 
-The NuGet package goes to `Sources/Vessel.Core/bin/Release/Packages/`. The native binary and header go to `Sources/Vessel.Native/bin/Release/net10.0/<RID>/publish/`. See the [source build guide](Docs/UserGuide/BuildFromSource.md) for toolchains, Windows, Linux and macOS targets, tests and benchmarks.
+- **C#** — [Build the `Vessel.Core` NuGet package](Docs/UserGuide/BuildFromSource.md#build-the-managed-library).
+- **C** — [Publish the shared library](Docs/UserGuide/BuildFromSource.md#build-the-shared-library) or [build an experimental static library](Docs/UserGuide/BuildFromSource.md#build-a-static-library) with Python 3.10 or later.
+- **Python** — [Build a wheel from the shared library](Docs/UserGuide/BuildFromSource.md#build-a-python-wheel). This requires Python 3.10 or later with `venv` and `pip`, plus `patchelf` on Linux.
 
 ## Documentation
 

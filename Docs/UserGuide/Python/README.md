@@ -14,6 +14,8 @@ To install from [GitHub Releases](https://github.com/noyzone99/Vessel/releases),
 
 To develop from a checkout, install with `python -m pip install ./Bindings/python` and use `library_path` or `VESSEL_LIBRARY_PATH` to select a [native library built from source](../BuildFromSource.md#build-the-shared-library). These settings can also override the bundled library.
 
+To package both together, [build a wheel from source](../BuildFromSource.md#build-a-python-wheel).
+
 ## Write and read an object
 
 Save this as `hello.py`. It creates `my-store` in the working directory.

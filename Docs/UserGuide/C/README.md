@@ -2,7 +2,7 @@
 
 ## Setup
 
-Download the `vessel-native-<platform>-<arch>-<version>.zip` archive for your target from [GitHub Releases](https://github.com/noyzone99/Vessel/releases). Linux archive names include `glibc` or `musl` before the architecture. Extract the archive to get `vessel.h`, the shared library and the license. Windows archives also contain the `vessel.lib` import library.
+Download the `vessel-native-dynamic-<platform>-<arch>-<version>.zip` archive for your target from [GitHub Releases](https://github.com/noyzone99/Vessel/releases). Linux archive names include `glibc` or `musl` before the architecture. The archive contains `vessel.h`, the shared library and the license. Windows archives also contain the `vessel.lib` import library. Experimental static archives are available for Windows x64 and Linux glibc x64.
 
 Before a release is published, use a [native CI artifact](../BuildFromSource.md#platforms-and-architectures) or [publish from source](../BuildFromSource.md#build-the-shared-library). Use the header and library from the same build. Match the process's OS, architecture and Linux C library.
 
@@ -52,7 +52,7 @@ int main(void)
 On Windows, open a Developer PowerShell for the target architecture. Set `$publish` to the extracted archive directory. When building from source, point `$import` at `vessel.lib` in the sibling `native/` directory.
 
 ~~~powershell
-$publish = 'C:\path\to\vessel-native-windows-x64-0.0.1-alpha.1'
+$publish = 'C:\path\to\vessel-native-dynamic-windows-x64-0.0.1-alpha.1'
 $import = Join-Path $publish 'vessel.lib'
 cl.exe /nologo /std:c11 "/I$publish" hello.c $import /Fe:hello.exe
 $env:PATH = "$publish;$env:PATH"
@@ -66,6 +66,31 @@ publish=/absolute/path/to/extracted-archive
 clang -std=c11 -I "$publish" hello.c -L "$publish" -lvessel "-Wl,-rpath,$publish" -o hello
 ./hello
 ~~~
+
+### Link an experimental static library
+
+Choose a `vessel-native-static-<platform>-<arch>-<version>.zip` archive. It contains `vessel.h`, the static library, `vessel-link.rsp` with the platform linker options and the license notices. Set the package path to the extracted directory and use the same `hello.c` example.
+
+On Windows x64, run this in an x64 Developer PowerShell.
+
+~~~powershell
+$package = 'C:\path\to\vessel-native-static-windows-x64-0.0.1-alpha.1'
+$archive = Join-Path $package 'vessel_static.lib'
+$options = Join-Path $package 'vessel-link.rsp'
+cl.exe /nologo /c /MT /std:c11 "/I$package" hello.c /Fo:hello.obj
+link.exe /nologo /OUT:hello.exe hello.obj $archive "@$options"
+.\hello.exe
+~~~
+
+On Linux glibc x64, use Clang and GNU binutils.
+
+~~~sh
+package=/absolute/path/to/vessel-native-static-linux-glibc-x64-0.0.1-alpha.1
+clang -std=c11 -I "$package" hello.c "$package/libvessel.a" "@$package/vessel-link.rsp" -o hello
+./hello
+~~~
+
+The executable contains Vessel and its NativeAOT runtime code. The linker options still use platform libraries. NativeAOT supports one statically linked NativeAOT library per loadable module. [Microsoft static library example](https://github.com/dotnet/samples/tree/main/core/nativeaot/NativeLibrary#building-static-libraries)
 
 ## Common tasks
 
