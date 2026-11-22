@@ -135,9 +135,21 @@ For Linux or macOS, use the same structure under `artifacts/java-natives/<RID>/`
 
 The `verify` phase runs [the smoke test](../../Bindings/java/src/test/java/Smoke.java) with the packaged JAR on the classpath. CI stages all eight binaries from the tested native artifacts, checks every packaged binary against its input and builds the [Maven and Gradle examples](../../Examples/java) against the resulting artifact. It then tests the same JAR from scratch on each host, including an Alpine JVM for musl.
 
+## Build the Node.js packages
+
+Install Node.js 24 or later, npm, Python 3 and a C++20 compiler supported by [node-gyp](https://github.com/nodejs/node-gyp#installation). Publish the [shared library](#build-the-shared-library) for your target first. Build the addon and package it in an environment matching the library's OS, architecture and Linux C library. For Windows x64, run the following from the repository root.
+
+```powershell
+dotnet publish Sources/Vessel.Native -c Release -r win-x64
+npm --prefix Bindings/node run build
+npm --prefix Bindings/node run pack:local -- ../../Sources/Vessel.Native/bin/Release/net11.0/win-x64/publish/vessel.dll ../../artifacts/npm --verify
+```
+
+For other targets, use the RID and shared library filename from the [platform table](#platforms-and-architectures). The command writes the main and platform tarballs to `artifacts/npm`. With `--verify` it installs both tarballs into a temporary consumer directory under that output and runs the binding tests against the installed package. The package metadata filters optional binary dependencies by OS, architecture and Linux C library family. The oldest OS and C library versions depend on the NativeAOT build environment.
+
 ## Tagged releases
 
-Set the .NET and native version in [`Directory.Build.props`](../../Directory.Build.props), the same Java version in [`Bindings/java/pom.xml`](../../Bindings/java/pom.xml) and its Python equivalent in [`pyproject.toml`](../../Bindings/python/pyproject.toml). For the first alpha, the version is `0.0.1-alpha.1` and the Python equivalent is `0.0.1a1`. Update the version shown in the Java guide and examples. The C ABI version is tracked separately in [`vessel.h`](../../Sources/Vessel.Native/vessel.h).
+Set the .NET and native version in [`Directory.Build.props`](../../Directory.Build.props), the same Java version in [`Bindings/java/pom.xml`](../../Bindings/java/pom.xml), the main and optional dependency versions in [`Bindings/node/package.json`](../../Bindings/node/package.json) and the Python equivalent in [`pyproject.toml`](../../Bindings/python/pyproject.toml). For the first alpha, the version is `0.0.1-alpha.1` and the Python equivalent is `0.0.1a1`. Update the version shown in the Java guide and examples. The C ABI version is tracked separately in [`vessel.h`](../../Sources/Vessel.Native/vessel.h).
 
 A tag matching the configured version, such as `v0.0.1-alpha.1`, triggers the [release jobs](../../.github/workflows/validate.yml) after validation. The [GitHub Release](https://github.com/noyzone99/Vessel/releases) contains eight dynamic and two experimental static C archives, the `VesselStorage` NuGet package, eight `vessel-storage` wheels and the Java JAR with its POM, sources and Javadoc. PyPI receives the platform wheels.
 

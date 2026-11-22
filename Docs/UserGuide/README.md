@@ -6,10 +6,11 @@
 | C | NativeAOT shared library and C header | [C](C/README.md) |
 | Python | `vessel-storage` wheel with the native shared library included | [Python](Python/README.md) |
 | Java | `io.github.noyzone99:vessel-storage` on Java 25 with bundled native libraries | [Java](Java/README.md) |
+| Node.js | `vessel-storage` on Node.js 24 and later, with TypeScript declarations and platform-specific native packages built from source | [Node.js](NodeJS/README.md) |
 
 Find native C archives, NuGet packages, Python wheels and Java JARs under [GitHub Releases](https://github.com/noyzone99/Vessel/releases). The language guides give installation commands for [NuGet.org](https://www.nuget.org/packages/VesselStorage), [PyPI](https://pypi.org/project/vessel-storage/) and Maven Central once the relevant version is published.
 
-Node.js bindings are planned. Other languages with C interoperability can use the [C ABI reference](../ApiReferences/C/README.md) to implement a binding.
+Other languages with C interoperability can use the [C ABI reference](../ApiReferences/C/README.md) to implement a binding.
 
 - [Build from source](BuildFromSource.md)
 - [Storage behavior](Storage.md)

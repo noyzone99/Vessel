@@ -16,9 +16,14 @@ Vessel is an embedded object store for application-owned local filesystems. Keep
 | Managed `Vessel` | .NET 8, .NET 10 and .NET 11 |
 | Native `Vessel.Native` | .NET 11 NativeAOT shared library with a C ABI and experimental static archives for Windows x64 and Linux glibc x64 |
 | Native platforms | Windows, Linux (glibc and musl) and macOS, each on x64 and ARM64 |
-| Language integration | C# through the `VesselStorage` NuGet package, C through `vessel.h`, Python through `vessel-storage`, and Java 25 through the `vessel-storage` JAR |
+| Language integration | C# through the `VesselStorage` NuGet package, C through `vessel.h`, Python through `vessel-storage`, Java 25 through the `vessel-storage` JAR, and Node.js 24 and later through the `vessel-storage` npm package with TypeScript declarations |
 
-Use the project files and [validation workflow](.github/workflows/validate.yml) to verify framework targets and the native CI matrix. Node.js bindings are planned. Describe roadmap items according to their implementation and validation status.
+Use the project files and [validation workflow](.github/workflows/validate.yml) to verify framework targets and the native CI matrix. Describe integrations according to their implementation, validation and publication status.
+
+## Naming
+
+- Name distributions **Vessel Storage** using the ecosystem's package casing. Use `VesselStorage` for NuGet and `vessel-storage` for PyPI, Maven and npm. Include the native target in platform-specific npm package names.
+- Use **Vessel** for the main public class and **vessel** for the public module, package or namespace segment, with the language's casing and any required organization prefix. Apply this to new APIs and preserve existing public names for compatibility.
 
 ## Documentation layout
 
@@ -38,7 +43,7 @@ Docs/
     <Language>/README.md           Public contracts and interop details
 ```
 
-- Use `CSharp`, `C`, `Python` and `Java` as the current language directory names. Add matching guide and reference directories when a new integration has a verifiable example and public API or interop contract. Add focused topic pages as needed and link them from the relevant `README.md`.
+- Use `CSharp`, `C`, `Python`, `Java` and `NodeJS` as the current language directory names. Add matching guide and reference directories when a new integration has a verifiable example and public API or interop contract. Add focused topic pages as needed and link them from the relevant `README.md`.
 - Start each language guide with prerequisites and setup, followed by a runnable write-and-read example, common tasks and links to its API reference and shared topics.
 - Organize each reference by public type or operation. Cover parameters and defaults, results and failures, resource ownership, concurrency and version or platform constraints where applicable. Document the native contract in the C reference and link to it from FFI references for shared behavior.
 - Keep the root README focused on what Vessel does, why it exists, a short example and how to build from source. Keep the NuGet package README in `Sources/Vessel/Assets/README.md` because NuGet embeds it in the package.

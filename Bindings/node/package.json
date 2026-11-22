@@ -1,0 +1,37 @@
+{
+  "name": "vessel-storage",
+  "version": "0.0.1-alpha.1",
+  "description": "Embedded object storage for Node.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noyzone99/Vessel.git",
+    "directory": "Bindings/node"
+  },
+  "engines": { "node": ">=24" },
+  "exports": {
+    ".": {
+      "import": { "types": "./index.d.mts", "default": "./index.mjs" },
+      "require": { "types": "./index.d.cts", "default": "./index.cjs" }
+    }
+  },
+  "main": "./index.cjs",
+  "types": "./index.d.cts",
+  "files": ["index.cjs", "index.mjs", "index.d.cts", "index.d.mts", "platform.cjs", "LICENSE"],
+  "gypfile": false,
+  "scripts": {
+    "build": "node-gyp rebuild",
+    "test": "node --test test/*.test.cjs",
+    "pack:local": "node scripts/pack.cjs"
+  },
+  "optionalDependencies": {
+    "@vessel-storage/win32-x64": "0.0.1-alpha.1",
+    "@vessel-storage/win32-arm64": "0.0.1-alpha.1",
+    "@vessel-storage/darwin-x64": "0.0.1-alpha.1",
+    "@vessel-storage/darwin-arm64": "0.0.1-alpha.1",
+    "@vessel-storage/linux-x64-glibc": "0.0.1-alpha.1",
+    "@vessel-storage/linux-arm64-glibc": "0.0.1-alpha.1",
+    "@vessel-storage/linux-x64-musl": "0.0.1-alpha.1",
+    "@vessel-storage/linux-arm64-musl": "0.0.1-alpha.1"
+  }
+}

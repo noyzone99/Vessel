@@ -20,6 +20,7 @@ Vessel is designed to keep memory use predictable while streaming large objects 
 - [C](Docs/UserGuide/C/README.md) uses `vessel.h` and the native library.
 - [Python](Docs/UserGuide/Python/README.md) uses the `vessel-storage` wheel with its bundled native library.
 - [Java](Docs/UserGuide/Java/README.md) uses the `vessel-storage` JAR on Java 25 with bundled native libraries.
+- [Node.js](Docs/UserGuide/NodeJS/README.md) uses the `vessel-storage` npm package on Node.js 24 and later with JavaScript and TypeScript support. The npm packages can be built from source.
 
 For published versions, find the native C archives, NuGet package, Python wheels and Java JARs in [GitHub Releases](https://github.com/noyzone99/Vessel/releases). The [user guide](Docs/UserGuide/README.md) links to the package registries.
 
@@ -33,6 +34,7 @@ Run `dotnet build Vessel.slnx -c Release` from the repository root to build the 
 - **C** — [Publish the shared library](Docs/UserGuide/BuildFromSource.md#build-the-shared-library) or [build an experimental static library](Docs/UserGuide/BuildFromSource.md#build-a-static-library) with Python 3.10 or later.
 - **Python** — [Build a wheel from the shared library](Docs/UserGuide/BuildFromSource.md#build-a-python-wheel). This requires Python 3.10 or later with `venv` and `pip`, plus `patchelf` on Linux.
 - **Java** — [Build the JAR with Maven](Docs/UserGuide/BuildFromSource.md#build-the-java-jar). This requires JDK 25 and the shared library for each platform you want to package.
+- **Node.js** — [Build the npm packages](Docs/UserGuide/BuildFromSource.md#build-the-nodejs-packages). This requires Node.js 24 or later, a native compiler and the shared library for your platform.
 
 ## Documentation
 
