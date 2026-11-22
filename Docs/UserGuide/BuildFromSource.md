@@ -109,6 +109,14 @@ The default `--quick` profile covers reads, unique writes, overwrites and concur
 
 The fixtures mix compressible and random data and include a subset of frequently read keys. New writes use fresh payloads, and the write fixtures are cleaned between iterations. Results are reported per workload operation. A mixed churn operation includes a write and a delete. Set `VESSEL_BENCH_SEED` to an integer for a different reproducible workload. BenchmarkDotNet flags such as `--filter` work with both profiles.
 
+Run the standalone managed probe for startup, warm reopen, operation latency percentiles and process-wide allocation metrics. The arguments specify corpus size, operations per phase, workers, payload bytes and codec. Each run creates a temporary store and seeds at most 64 distinct payloads to isolate metadata scale. Use the same runtime, device and parameters across revisions.
+
+~~~sh
+dotnet run --project Tests/Vessel.Managed.Benchmark -c Release -f net11.0 -- 10000 1024 8 1024 none
+~~~
+
+The probe also targets .NET 8 and 10. Run the [native benchmark](../../Tests/Vessel.Native.Benchmark/README.md) to measure a C client linked to the published shared library.
+
 ### Smoke tests
 
 The [C smoke test](../../Tests/Vessel.Native.Tests/smoke.c) exercises callback uploads, stream reads and ABI layout. The [raw Python smoke test](../../Tests/Vessel.Native.Tests/smoke.py) exercises the C ABI using `ctypes`, including process-exit recovery. On Linux or macOS, `smoke.sh` builds the C client with Clang and runs both ABI smoke tests and the Python package tests. The validation workflow includes the MSVC commands for Windows.
