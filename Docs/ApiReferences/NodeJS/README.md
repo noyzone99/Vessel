@@ -17,6 +17,8 @@
 
 Write options include `overwrite` (defaults to `false`), `compression` (`none`, `zstd` or `lz4`, defaults to `none`), `level` (`fastest`, `balanced`, `high` or `ultra`, defaults to `balanced`) and optional `fileName`, `extension` and `mimeType`. Terminating an upload before it requests commit preserves the previous object. An abort that arrives after the commit request can race with publication.
 
+Directory paths, keys, prefixes and file attributes must be well-formed Unicode strings without NUL characters. An unpaired UTF-16 surrogate raises `TypeError` before the native call.
+
 Read and write streams accept an `AbortSignal` and default to a 64 KiB `highWaterMark`. Uploads consume buffers in chunks and copy directly into the native pipeline. `Buffer` instances backed by `SharedArrayBuffer` are unsupported for writes. Close or destroy a stream you stop consuming before it finishes.
 
 ## ObjectMetadata

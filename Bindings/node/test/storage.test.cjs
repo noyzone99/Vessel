@@ -61,6 +61,30 @@ test('put, stream, metadata, keys, delete and reopen', { timeout }, async t => {
   } finally { await vessel.close(); }
 });
 
+test('rejects malformed UTF-16 without replacing valid text', { timeout }, async t => {
+  const { vessel, directory } = await store(t);
+  try {
+    const key = 'docs/\uFFFD';
+    const original = Buffer.from('original');
+    await vessel.put(key, original);
+    await assert.rejects(vessel.put('docs/\uD800', Buffer.from('replacement'), { overwrite: true }), TypeError);
+    assert.deepEqual(await read(vessel.createReadStream(key)), original);
+
+    const malformed = 'docs/\uDC00';
+    await assert.rejects(vessel.keys(malformed), TypeError);
+    await assert.rejects(vessel.getMetadata(malformed), TypeError);
+    await assert.rejects(vessel.delete(malformed), TypeError);
+    assert.throws(() => vessel.createReadStream(malformed), TypeError);
+    assert.throws(() => vessel.createWriteStream(malformed), TypeError);
+    await assert.rejects(vessel.put('metadata', original, { fileName: malformed }), TypeError);
+    await assert.rejects(Vessel.open(path.join(directory, malformed)).then(opened => opened.close()), TypeError);
+
+    const unicode = 'docs/\u{1F4C4}';
+    assert.equal((await vessel.put(unicode, original, { fileName: unicode })).fileName, unicode);
+    assert.deepEqual(await vessel.keys(unicode), [unicode]);
+  } finally { await vessel.close(); }
+});
+
 test('concurrent uploads and a reader retain the expected object version', { timeout }, async t => {
   const { vessel } = await store(t);
   try {

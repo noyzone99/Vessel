@@ -48,8 +48,8 @@ function translate(error) {
 }
 
 function text(value, name) {
-  if (typeof value !== 'string' || value.includes('\0'))
-    throw new TypeError(`${name} must be a string without NUL bytes`);
+  if (typeof value !== 'string' || value.includes('\0') || !value.isWellFormed())
+    throw new TypeError(`${name} must be a well-formed Unicode string without NUL characters`);
   return value;
 }
 
