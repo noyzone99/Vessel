@@ -84,6 +84,10 @@ public class Smoke {
                 }
             }
 
+            equal((long) payload.length, store.put("byte-array", payload).originalSize());
+            equalBytes(payload, store.read("byte-array"));
+            equal(true, store.delete("byte-array"));
+
             status(-4, () -> store.put(key, new byte[0]));
             status(-3, () -> store.read("absent"));
             invalid(() -> store.put(key + '\0', payload));
@@ -121,14 +125,17 @@ public class Smoke {
             }
             equalBytes(payload, store.read(key));
 
-            Thread.currentThread().interrupt();
-            try {
-                store.put(key, new ByteArrayInputStream(payload), overwrite);
-                throw new AssertionError("Expected upload to be interrupted");
-            } catch (InterruptedIOException expected) {
-                equal(true, Thread.currentThread().isInterrupted());
-            } finally {
-                Thread.interrupted();
+            for (boolean array : new boolean[] { false, true }) {
+                Thread.currentThread().interrupt();
+                try {
+                    if (array) store.put(key, payload, overwrite);
+                    else store.put(key, new ByteArrayInputStream(payload), overwrite);
+                    throw new AssertionError("Expected upload to be interrupted");
+                } catch (InterruptedIOException expected) {
+                    equal(true, Thread.currentThread().isInterrupted());
+                } finally {
+                    Thread.interrupted();
+                }
             }
             equalBytes(payload, store.read(key));
 

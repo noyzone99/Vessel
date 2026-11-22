@@ -1,6 +1,5 @@
 package io.github.noyzone99.vessel;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
@@ -54,7 +53,7 @@ public final class VesselStorage implements AutoCloseable {
 
     /** Stores bytes and returns the metadata of the committed object. */
     public ObjectMetadata put(String key, byte[] data, WriteOptions options) throws IOException {
-        return put(key, new ByteArrayInputStream(data), options);
+        return put(key, new Upload(Objects.requireNonNull(data, "data")), options);
     }
 
     /** Streams input from its current position with the default write options. */
@@ -64,11 +63,13 @@ public final class VesselStorage implements AutoCloseable {
 
     /** Streams input to EOF without taking ownership of it. */
     public ObjectMetadata put(String key, InputStream input, WriteOptions options) throws IOException {
-        Objects.requireNonNull(input, "input");
+        return put(key, new Upload(Objects.requireNonNull(input, "input")), options);
+    }
+
+    private ObjectMetadata put(String key, Upload upload, WriteOptions options) throws IOException {
         Objects.requireNonNull(options, "options");
         return withHandle(handle -> {
             try (Arena arena = Arena.ofConfined()) {
-                Upload upload = new Upload(input);
                 MemorySegment callback = Native.upcall(SUPPLY.bindTo(upload), READ_CALLBACK, arena);
                 MemorySegment result = arena.allocate(Native.METADATA);
                 try {
@@ -216,15 +217,29 @@ public final class VesselStorage implements AutoCloseable {
     private static final class Upload {
         private final InputStream input;
         private byte[] bytes;
+        private int position;
         private Throwable failure;
 
         Upload(InputStream input) {
             this.input = input;
         }
 
+        Upload(byte[] data) {
+            this.input = null;
+            this.bytes = data;
+        }
+
         int supply(MemorySegment context, MemorySegment buffer, int capacity) {
             try {
                 checkInterrupted();
+                if (input == null) {
+                    int count = Math.min(capacity, bytes.length - position);
+                    if (count == 0) return 0;
+                    MemorySegment.copy(bytes, position, buffer.reinterpret(count), JAVA_BYTE, 0, count);
+                    position += count;
+                    return count;
+                }
+
                 int length = Math.min(capacity, VesselInputStream.BUFFER_SIZE);
                 if (bytes == null) {
                     bytes = new byte[length];
