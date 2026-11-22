@@ -98,7 +98,7 @@ public sealed class VesselStorage : IVesselStorage
                 var (hash, originalSize, compressedSize) = _blobStorageEngine.PublishBlob(staged, cancellationToken);
                 var createdAt = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                 metadata = new ObjectMetadata(key, hash, originalSize, compressionType, hash, createdAt, fileInfo.FileName, fileInfo.Extension, fileInfo.MimeType, compressedSize);
-                _metadataRepository.Upsert(cancellationToken, metadata);
+                _metadataRepository.Upsert(cancellationToken, metadata, previousHash);
             }
         }
 
@@ -152,9 +152,10 @@ public sealed class VesselStorage : IVesselStorage
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var metadata = _metadataRepository.Get(key);
-                if (metadata is null || !_metadataRepository.Delete(cancellationToken, key))
+                if (metadata is null)
                     return Task.FromResult(false);
 
+                _metadataRepository.Delete(cancellationToken, key, metadata.Value.Hash);
                 DeleteBlobIfUnreferenced(metadata.Value.Hash);
             }
 

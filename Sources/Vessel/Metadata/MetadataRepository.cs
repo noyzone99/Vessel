@@ -101,57 +101,79 @@ internal sealed class MetadataRepository : IMetadataRepository
     }
 
     /// <inheritdoc/>
-    public void Upsert(in ObjectMetadata metadata) => Upsert(default, metadata);
+    public void Upsert(in ObjectMetadata metadata)
+    {
+        lock (_commitGate)
+        {
+            ThrowIfUnavailable();
+            var previousHash = _metadataDb.TryGet(metadata.Key, out var previous) ? previous.Hash : null;
+            CommitUpsert(metadata, previousHash);
+        }
+    }
 
-    /// <summary>Persists metadata unless cancellation is requested before the mutation begins.</summary>
-    internal void Upsert(CancellationToken cancellationToken, in ObjectMetadata metadata)
+    /// <summary>Persists metadata for a key whose previous hash the caller read under the key lock.</summary>
+    internal void Upsert(CancellationToken cancellationToken, in ObjectMetadata metadata, string? previousHash)
     {
         lock (_commitGate)
         {
             ThrowIfUnavailable();
             cancellationToken.ThrowIfCancellationRequested();
-            var hadPrevious = _metadataDb.TryGet(metadata.Key, out var previous);
-            cancellationToken.ThrowIfCancellationRequested();
-            var changedHash = !hadPrevious || previous.Hash != metadata.Hash;
-            try
-            {
-                if (changedHash) IncrementRefCount(metadata.Hash);
-                _metadataDb.Upsert(metadata.Key, metadata);
-                if (changedHash && hadPrevious) DecrementRefCount(previous.Hash);
-            }
-            catch (Exception error)
-            {
-                // ZoneTree can change its in-memory tree before appending the WAL record.
-                // A failed append must remain at the end of the log until reopen.
-                Volatile.Write(ref _mutationFailure, error);
-                throw;
-            }
+            CommitUpsert(metadata, previousHash);
+        }
+    }
+
+    private void CommitUpsert(in ObjectMetadata metadata, string? previousHash)
+    {
+        var changedHash = previousHash is null || previousHash != metadata.Hash;
+        try
+        {
+            if (changedHash) IncrementRefCount(metadata.Hash);
+            _metadataDb.Upsert(metadata.Key, metadata);
+            if (changedHash && previousHash is not null) DecrementRefCount(previousHash);
+        }
+        catch (Exception error)
+        {
+            // ZoneTree can change its in-memory tree before appending the WAL record.
+            // A failed append must remain at the end of the log until reopen.
+            Volatile.Write(ref _mutationFailure, error);
+            throw;
         }
     }
 
     /// <inheritdoc/>
-    public bool Delete(string key) => Delete(default, key);
+    public bool Delete(string key)
+    {
+        lock (_commitGate)
+        {
+            ThrowIfUnavailable();
+            if (!_metadataDb.TryGet(key, out var metadata)) return false;
+            CommitDelete(key, metadata.Hash);
+            return true;
+        }
+    }
 
-    /// <summary>Deletes metadata unless cancellation is requested before the mutation begins.</summary>
-    internal bool Delete(CancellationToken cancellationToken, string key)
+    /// <summary>Deletes metadata for a key whose previous hash the caller read under the key lock.</summary>
+    internal void Delete(CancellationToken cancellationToken, string key, string previousHash)
     {
         lock (_commitGate)
         {
             ThrowIfUnavailable();
             cancellationToken.ThrowIfCancellationRequested();
-            if (!_metadataDb.TryGet(key, out var metadata)) return false;
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                if (!_metadataDb.TryDelete(key, out _)) return false;
-                DecrementRefCount(metadata.Hash);
-                return true;
-            }
-            catch (Exception error)
-            {
-                Volatile.Write(ref _mutationFailure, error);
-                throw;
-            }
+            CommitDelete(key, previousHash);
+        }
+    }
+
+    private void CommitDelete(string key, string previousHash)
+    {
+        try
+        {
+            _metadataDb.ForceDelete(key);
+            DecrementRefCount(previousHash);
+        }
+        catch (Exception error)
+        {
+            Volatile.Write(ref _mutationFailure, error);
+            throw;
         }
     }
 
