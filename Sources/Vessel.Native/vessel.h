@@ -21,6 +21,7 @@ extern "C" {
 
 typedef void* vessel_t;
 typedef void* vessel_stream_t;
+typedef void* vessel_upload_t;
 
 typedef int32_t vessel_error_t;
 enum {
@@ -142,6 +143,26 @@ vessel_error_t VESSEL_CALL vessel_put_ex(vessel_t handle, const char* key, const
 vessel_error_t VESSEL_CALL vessel_put_stream(vessel_t handle, const char* key, vessel_read_callback read,
     void* context, int32_t overwrite, vessel_object_info_t info, int32_t comp_type, int32_t comp_level,
     vessel_metadata_result_t* out_metadata);
+
+/*
+ * Push upload. On successful begin, complete is called exactly once, possibly
+ * before begin returns or on a library thread. Metadata is borrowed until the
+ * callback returns and is NULL on failure. Keep context alive until then.
+ * The callback must not reenter the upload. Write copies up to 64 KiB before
+ * returning. If out_paused is nonzero, call drain before the next write or
+ * commit. Drain may block. Serialize producer calls. End with commit == 0
+ * can also interrupt a pending drain. End releases the handle,
+ * is idempotent and is required even if completion already reported an error.
+ */
+typedef void (VESSEL_CALL *vessel_upload_callback)(void* context, vessel_error_t status,
+    const vessel_metadata_result_t* metadata);
+vessel_error_t VESSEL_CALL vessel_upload_begin(vessel_t handle, const char* key, int32_t overwrite,
+    vessel_object_info_t info, int32_t comp_type, int32_t comp_level, vessel_upload_callback complete,
+    void* context, vessel_upload_t* out_upload);
+vessel_error_t VESSEL_CALL vessel_upload_write(vessel_upload_t upload, const uint8_t* data, int32_t count,
+    int32_t* out_paused);
+vessel_error_t VESSEL_CALL vessel_upload_drain(vessel_upload_t upload);
+void VESSEL_CALL vessel_upload_end(vessel_upload_t upload, int32_t commit);
 
 /* Reads the entire payload. Use vessel_stream_* above VESSEL_WHOLE_READ_LIMIT. */
 vessel_error_t VESSEL_CALL vessel_read(vessel_t handle, const char* key, vessel_object_t* out_obj);

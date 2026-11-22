@@ -16,6 +16,7 @@ public static unsafe class NativeExports
     private static readonly UTF8Encoding s_utf8 = new(false, true);
     private static readonly NativeHandles<VesselStorage> s_stores = new();
     private static readonly NativeHandles<VesselStream> s_streams = new();
+    private static readonly NativeHandles<NativeUpload> s_uploads = new();
 
     [UnmanagedCallersOnly(EntryPoint = "vessel_abi_version", CallConvs = [typeof(CallConvCdecl)])]
     public static int AbiVersion() => 1;
@@ -133,6 +134,87 @@ public static unsafe class NativeExports
 
         try { return consumer.GetAwaiter().GetResult(); }
         finally { producerError?.Throw(); }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_upload_begin", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError UploadBegin(nint handle, byte* key, int overwrite, NativeObjectInfo info, int codec,
+        int level, delegate* unmanaged[Cdecl]<void*, VesselError, NativeMetadataResult*, void> complete,
+        void* context, nint* output)
+    {
+        if (output == null) return VesselError.InvalidArgument;
+        *output = 0;
+        if (key == null || complete == null) return VesselError.InvalidArgument;
+        if (!s_stores.TryRent(handle, out var store)) return HandleError(handle);
+
+        nint uploadHandle = 0;
+        try
+        {
+            var decodedKey = Decode(key);
+            var decodedInfo = Decode(info);
+            var upload = new NativeUpload();
+            uploadHandle = s_uploads.Add(upload);
+            upload.Start(store, decodedKey, overwrite != 0, decodedInfo, (CompressionType)codec,
+                (CompressionLevel)level, result => CompleteUpload(result, complete, context));
+            *output = uploadHandle;
+            return VesselError.Success;
+        }
+        catch (Exception error)
+        {
+            s_uploads.Close(uploadHandle);
+            store.Dispose();
+            return MapError(error);
+        }
+    }
+
+    private static void CompleteUpload(Task<ObjectMetadata> result,
+        delegate* unmanaged[Cdecl]<void*, VesselError, NativeMetadataResult*, void> complete, void* context)
+    {
+        NativeMetadataResult metadata;
+        try { metadata = ExportResult(result.GetAwaiter().GetResult()); }
+        catch (Exception error)
+        {
+            complete(context, MapError(error), null);
+            return;
+        }
+        try { complete(context, VesselError.Success, &metadata); }
+        finally { ClearMetadata(&metadata.Metadata); }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_upload_write", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError UploadWrite(nint handle, byte* data, int count, int* paused)
+    {
+        if (paused == null) return VesselError.InvalidArgument;
+        *paused = 0;
+        if (count < 0 || count > ChunkSize || (count != 0 && data == null)) return VesselError.InvalidArgument;
+        if (!s_uploads.TryRent(handle, out var upload)) return HandleError(handle);
+        using (upload)
+        {
+            try { return upload.Value.Write(new ReadOnlySpan<byte>(data, count), out *paused); }
+            catch (Exception error) { return MapError(error); }
+        }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_upload_drain", CallConvs = [typeof(CallConvCdecl)])]
+    public static VesselError UploadDrain(nint handle)
+    {
+        if (!s_uploads.TryRent(handle, out var upload)) return HandleError(handle);
+        using (upload)
+        {
+            try { return upload.Value.Drain(); }
+            catch (Exception error) { return MapError(error); }
+        }
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "vessel_upload_end", CallConvs = [typeof(CallConvCdecl)])]
+    public static void UploadEnd(nint handle, int commit)
+    {
+        if (!s_uploads.TryRent(handle, out var upload)) return;
+        using (upload)
+        {
+            try { upload.Value.End(commit != 0); }
+            catch (Exception error) { System.Diagnostics.Trace.TraceWarning("Vessel upload cancellation failed: {0}", error.Message); }
+            finally { s_uploads.Close(handle); }
+        }
     }
 
     [UnmanagedCallersOnly(EntryPoint = "vessel_read", CallConvs = [typeof(CallConvCdecl)])]

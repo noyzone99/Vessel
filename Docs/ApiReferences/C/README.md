@@ -4,8 +4,8 @@
 
 ## Types and calling convention
 
-- Functions and callbacks use the C calling convention (`VESSEL_CALL`, `__cdecl` on Windows). Calls are synchronous. A language binding can call Vessel from its runtime's worker threads.
-- `vessel_t` and `vessel_stream_t` are pointer-sized opaque handles. FFI bindings must preserve the header's native struct alignment and signed `int32_t` and `int64_t` widths.
+- Functions and callbacks use the C calling convention (`VESSEL_CALL`, `__cdecl` on Windows). Calls are synchronous except for push upload completion. A language binding can call Vessel from its runtime's worker threads.
+- `vessel_t`, `vessel_stream_t` and `vessel_upload_t` are pointer-sized opaque handles. FFI bindings must preserve the header's native struct alignment and signed `int32_t` and `int64_t` widths.
 - Text is NUL-terminated UTF-8. `vessel_object_info_t` carries optional filename, extension and MIME type pointers. A `NULL` field represents an omitted value.
 - `vessel_metadata_t` includes the key, blob identifier, ETag, sizes, codec, file attributes and UTC timestamp in Unix seconds. `vessel_metadata_result_t` embeds it and adds the UTC timestamp in Unix milliseconds.
 - `vessel_object_t` carries a payload pointer, its byte length, the original payload's SHA-256 checksum and optional file attributes. Use the length to copy binary data.
@@ -40,6 +40,17 @@ For all writes, pass `0` to reject an existing key or a nonzero `overwrite` valu
 | `vessel_stream_close` | Closes the stream handle. Repeated closes are safe. |
 
 Vessel serializes calls on an individual native stream. Open a separate handle for each independent read position.
+
+## Push upload operations
+
+| Function | Result and behavior |
+| --- | --- |
+| `vessel_upload_begin` | Starts a write to a key, returning an upload handle. On success the completion callback runs once, potentially before begin returns. The callback receives the terminal status and borrowed metadata on success. |
+| `vessel_upload_write` | Copies up to 64 KiB from caller-owned memory. A nonzero `out_paused` indicates backpressure. |
+| `vessel_upload_drain` | Waits for that backpressure to clear. Call it when write reports a pause, before writing again or committing. |
+| `vessel_upload_end` | Releases the upload handle. A nonzero `commit` signals EOF and requests publication. Zero cancels the write and can interrupt a pending drain. Call end even if completion already reported an error. Repeated calls are safe. |
+
+Use the completion status to determine the write outcome. A failed drain or write can occur after the consumer has stopped and the callback carries the underlying failure. Serialize producer calls for each upload. Keep the completion callback and its context alive until it returns, and consume any borrowed metadata inside the callback. Completion can run on a library thread. Commit and abort are terminal and the first end request wins. Keep independent upload handles for concurrent writes.
 
 ## Callbacks and resource ownership
 
