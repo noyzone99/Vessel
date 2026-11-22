@@ -18,6 +18,8 @@ The [public interface](../../../Sources/Vessel/IVesselStorage.cs) defines the op
 
 `PutAsync` defaults to `overwrite: false`, `fileInfo: default`, `compressionType: CompressionType.None`, `compressionLevel: CompressionLevel.Balanced` and `cancellationToken: default`. A null input stream raises `ArgumentNullException`. Invalid keys and out-of-range codec or level values raise argument exceptions. Cancellation observed before commit leaves the previous object intact and completes the task as cancelled. Dispose input streams yourself, and dispose or exhaust active enumerators before reopening the store.
 
+After a metadata mutation fails, operations on the metadata index raise `IOException` until the store is closed and reopened. See [persistence and recovery](../../UserGuide/Storage.md#persistence-and-recovery).
+
 ## `VesselStream`
 
 [`VesselStream`](../../../Sources/Vessel/VesselStream.cs) extends `Stream` and exposes `Metadata`, `Checksum`, `FileName`, `Extension` and `MimeType` for the opened version. `Length` is the uncompressed byte count. Check `CanSeek` before accessing `Position` or calling `Seek`. Compressed streams throw `NotSupportedException` for these operations. Use `Dispose` or `DisposeAsync` to close the reader. Use separate streams for independent read positions.

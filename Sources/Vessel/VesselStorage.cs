@@ -76,7 +76,9 @@ public sealed class VesselStorage : IVesselStorage
         ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)compressionLevel, (uint)CompressionLevel.Ultra);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!overwrite && _metadataRepository.Get(key) is not null)
+        if (overwrite)
+            _metadataRepository.ThrowIfUnavailable();
+        else if (_metadataRepository.Get(key) is not null)
             throw AlreadyExists(key);
 
         using var staged = await _blobStorageEngine.StageBlobAsync(contentStream, compressionType, compressionLevel, cancellationToken).ConfigureAwait(false);
@@ -95,8 +97,7 @@ public sealed class VesselStorage : IVesselStorage
                 var (hash, originalSize, compressedSize) = _blobStorageEngine.PublishBlob(staged, cancellationToken);
                 var createdAt = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                 metadata = new ObjectMetadata(key, hash, originalSize, compressionType, hash, createdAt, fileInfo.FileName, fileInfo.Extension, fileInfo.MimeType, compressedSize);
-                cancellationToken.ThrowIfCancellationRequested();
-                _metadataRepository.Upsert(metadata);
+                _metadataRepository.Upsert(cancellationToken, metadata);
             }
         }
 
@@ -145,7 +146,7 @@ public sealed class VesselStorage : IVesselStorage
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var metadata = _metadataRepository.Get(key);
-                if (metadata is null || !_metadataRepository.Delete(key))
+                if (metadata is null || !_metadataRepository.Delete(cancellationToken, key))
                     return Task.FromResult(false);
 
                 DeleteBlobIfUnreferenced(metadata.Value.Hash);
@@ -169,7 +170,8 @@ public sealed class VesselStorage : IVesselStorage
     {
         using var operation = BeginOperation();
         ValidateKey(key);
-        return _metadataRepository.Get(key);
+        lock (GetLock(_keyLocks, key))
+            return _metadataRepository.Get(key);
     }
 
     /// <inheritdoc/>

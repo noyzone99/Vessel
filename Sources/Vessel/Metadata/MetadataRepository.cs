@@ -1,6 +1,7 @@
 using Vessel.Logging;
 using System.Collections.Concurrent;
 using ZoneTree;
+using ZoneTree.AbstractFileStream;
 using ZoneTree.Options;
 
 namespace Vessel.Metadata;
@@ -13,7 +14,9 @@ internal sealed class MetadataRepository : IMetadataRepository
     private readonly IZoneTree<string, ObjectMetadata> _metadataDb;
     private readonly IMaintainer _metadataDbMaintainer;
     private readonly ConcurrentDictionary<string, int> _refCounts = new(StringComparer.Ordinal);
+    private readonly object _commitGate = new();
     private readonly IVesselLogger? _logger;
+    private Exception? _mutationFailure;
     private int _disposed;
 
     /// <summary>
@@ -25,10 +28,11 @@ internal sealed class MetadataRepository : IMetadataRepository
     /// uncompressed.
     /// </param>
     /// <param name="logger">An optional logger used to capture operational diagnostics.</param>
+    /// <param name="fileStreamProvider">An optional provider for the current metadata database's files.</param>
     /// <exception cref="ArgumentException">
     /// Thrown when <paramref name="storageBasePath"/> is null, empty, or whitespace.
     /// </exception>
-    public MetadataRepository(string storageBasePath, bool useCompression, IVesselLogger? logger = null)
+    public MetadataRepository(string storageBasePath, bool useCompression, IVesselLogger? logger = null, IFileStreamProvider? fileStreamProvider = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(storageBasePath);
         _logger = logger;
@@ -39,7 +43,7 @@ internal sealed class MetadataRepository : IMetadataRepository
         if (!Directory.Exists(currentPath) && Directory.Exists(legacyPath))
             MigrateLegacyMetadata(legacyPath, currentPath, useCompression);
 
-        _metadataDb = CreateFactory(currentPath, useCompression, WriteAheadLogMode.Sync).OpenOrCreate();
+        _metadataDb = CreateFactory(currentPath, useCompression, WriteAheadLogMode.Sync, fileStreamProvider).OpenOrCreate();
         try
         {
             RebuildReferenceCounts();
@@ -52,8 +56,8 @@ internal sealed class MetadataRepository : IMetadataRepository
         }
     }
 
-    private static ZoneTreeFactory<string, ObjectMetadata> CreateFactory(string path, bool useCompression, WriteAheadLogMode logMode)
-        => new ZoneTreeFactory<string, ObjectMetadata>()
+    private static ZoneTreeFactory<string, ObjectMetadata> CreateFactory(string path, bool useCompression, WriteAheadLogMode logMode, IFileStreamProvider? fileStreamProvider = null)
+        => new ZoneTreeFactory<string, ObjectMetadata>(fileStreamProvider)
             .SetDataDirectory(path)
             .ConfigureWriteAheadLogOptions(options => options.WriteAheadLogMode = logMode)
             .ConfigureDiskSegmentOptions(options =>
@@ -85,10 +89,11 @@ internal sealed class MetadataRepository : IMetadataRepository
     /// <inheritdoc/>
     public ObjectMetadata? Get(string key)
     {
-        ThrowIfDisposed();
+        ThrowIfUnavailable();
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
         var result = _metadataDb.TryGet(key, out var metadata);
+        ThrowIfUnavailable();
         if (!result)
         {
             _logger?.Log(VesselLogLevel.Debug, $"Metadata lookup miss for key '{key}'.");
@@ -100,35 +105,58 @@ internal sealed class MetadataRepository : IMetadataRepository
     }
 
     /// <inheritdoc/>
-    public void Upsert(in ObjectMetadata metadata)
+    public void Upsert(in ObjectMetadata metadata) => Upsert(default, metadata);
+
+    /// <summary>Persists metadata unless cancellation is requested before the mutation begins.</summary>
+    internal void Upsert(CancellationToken cancellationToken, in ObjectMetadata metadata)
     {
-        ThrowIfDisposed();
-        if (_metadataDb.TryGet(metadata.Key, out var oldMetadata))
+        lock (_commitGate)
         {
-            if (oldMetadata.Hash == metadata.Hash)
+            ThrowIfUnavailable();
+            cancellationToken.ThrowIfCancellationRequested();
+            var hadPrevious = _metadataDb.TryGet(metadata.Key, out var previous);
+            cancellationToken.ThrowIfCancellationRequested();
+            var changedHash = !hadPrevious || previous.Hash != metadata.Hash;
+            try
             {
+                if (changedHash) IncrementRefCount(metadata.Hash);
                 _metadataDb.Upsert(metadata.Key, metadata);
-                return;
+                if (changedHash && hadPrevious) DecrementRefCount(previous.Hash);
             }
-
-            IncrementRefCount(metadata.Hash);
-            _metadataDb.Upsert(metadata.Key, metadata);
-            DecrementRefCount(oldMetadata.Hash);
-            return;
+            catch (Exception error)
+            {
+                // ZoneTree can change its in-memory tree before appending the WAL record.
+                // A failed append must remain at the end of the log until reopen.
+                Volatile.Write(ref _mutationFailure, error);
+                throw;
+            }
         }
-
-        IncrementRefCount(metadata.Hash);
-        _metadataDb.Upsert(metadata.Key, metadata);
     }
 
     /// <inheritdoc/>
-    public bool Delete(string key)
+    public bool Delete(string key) => Delete(default, key);
+
+    /// <summary>Deletes metadata unless cancellation is requested before the mutation begins.</summary>
+    internal bool Delete(CancellationToken cancellationToken, string key)
     {
-        ThrowIfDisposed();
-        if (!_metadataDb.TryGet(key, out var metadata)) return false;
-        if (!_metadataDb.TryDelete(key, out _)) return false;
-        DecrementRefCount(metadata.Hash);
-        return true;
+        lock (_commitGate)
+        {
+            ThrowIfUnavailable();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_metadataDb.TryGet(key, out var metadata)) return false;
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                if (!_metadataDb.TryDelete(key, out _)) return false;
+                DecrementRefCount(metadata.Hash);
+                return true;
+            }
+            catch (Exception error)
+            {
+                Volatile.Write(ref _mutationFailure, error);
+                throw;
+            }
+        }
     }
 
     /// <inheritdoc/>
@@ -136,13 +164,14 @@ internal sealed class MetadataRepository : IMetadataRepository
     {
         ThrowIfDisposed();
         if (string.IsNullOrWhiteSpace(hash)) return false;
-        return _refCounts.TryGetValue(hash, out var count) && count > 0;
+        // Keep payloads when the on-disk outcome of a metadata write is uncertain.
+        return (_refCounts.TryGetValue(hash, out var count) && count > 0) || Volatile.Read(ref _mutationFailure) is not null;
     }
 
     /// <inheritdoc/>
     public IEnumerable<string> IterateKeys(string prefix)
     {
-        ThrowIfDisposed();
+        ThrowIfUnavailable();
         // L'iteratore di ZoneTree è un oggetto disposable che punta ai segmenti in memoria/disco
         using var iterator = _metadataDb.CreateIterator();
         var enumeratedKeys = 0L;
@@ -158,8 +187,12 @@ internal sealed class MetadataRepository : IMetadataRepository
             iterator.Seek(prefix);
         }
 
-        while (iterator.Next())
+        while (true)
         {
+            var hasNext = iterator.Next();
+            ThrowIfUnavailable();
+            if (!hasNext) break;
+
             // Nessun CancellationToken qui (opzionale in sync, o puoi passarlo)
             string key = iterator.CurrentKey;
 
@@ -221,8 +254,8 @@ internal sealed class MetadataRepository : IMetadataRepository
     public void Dispose()
     {
         ObjectDisposedException.ThrowIf(Interlocked.Exchange(ref _disposed, 1) != 0, this);
-        _metadataDbMaintainer.Dispose();
-        _metadataDb.Dispose();
+        try { _metadataDbMaintainer.Dispose(); }
+        finally { _metadataDb.Dispose(); }
     }
 
     /// <summary>
@@ -230,4 +263,11 @@ internal sealed class MetadataRepository : IMetadataRepository
     /// </summary>
     /// <exception cref="ObjectDisposedException">Thrown when the repository is no longer usable.</exception>
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+    internal void ThrowIfUnavailable()
+    {
+        ThrowIfDisposed();
+        if (Volatile.Read(ref _mutationFailure) is { } failure)
+            throw new IOException("A metadata write failed. Dispose and reopen the Vessel store before using it again.", failure);
+    }
 }

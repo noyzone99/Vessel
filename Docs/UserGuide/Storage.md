@@ -16,4 +16,6 @@ An open stream reads the version it acquired, including its metadata, even if it
 
 Vessel publishes and flushes a new payload before committing its metadata to a synchronous write-ahead log. A write cancelled before commit preserves the existing object, if any. Overwrite and delete commit their metadata changes before reclaiming unused payloads. On open, Vessel removes recognized temporary files and unreferenced blobs. These guarantees cover abrupt process exit on a local filesystem. Power-loss behavior depends on the filesystem and device.
 
+After a metadata mutation fails, operations that depend on the metadata index fail until the store is closed and reopened. Existing read streams retain their snapshots. Reopening replays the log and can recover an incomplete final record. Check the current key after reopening before retrying the failed operation, since a complete record may have reached the log before the error was reported.
+
 Keep the store and its lock file together inside an application-controlled directory. Back up the entire closed directory before upgrading. Existing alpha stores migrate on first open by copying live metadata from `metadata` to `metadata-v1`. The original metadata directory is retained and existing blobs are reused. Use the same Vessel version for every process that opens a given store.
