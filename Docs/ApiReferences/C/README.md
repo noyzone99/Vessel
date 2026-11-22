@@ -26,6 +26,8 @@
 
 For all writes, pass `0` to reject an existing key or a nonzero `overwrite` value to replace it. Select `VESSEL_COMPRESSION_NONE`, `VESSEL_COMPRESSION_ZSTD` or `VESSEL_COMPRESSION_LZ4` and one of `VESSEL_LEVEL_FASTEST`, `VESSEL_LEVEL_BALANCED`, `VESSEL_LEVEL_HIGH` or `VESSEL_LEVEL_ULTRA`.
 
+When a caller requests write metadata, Vessel allocates the result storage before publication. If that allocation fails, the write returns `VESSEL_ERR_OUT_OF_MEMORY` before publishing.
+
 ## Stream operations
 
 | Function | Result and behavior |
@@ -45,7 +47,7 @@ Vessel serializes calls on an individual native stream. Open a separate handle f
 
 | Function | Result and behavior |
 | --- | --- |
-| `vessel_upload_begin` | Starts a write to a key, returning an upload handle. On success the completion callback runs once, potentially before begin returns. The callback receives the terminal status and borrowed metadata on success. |
+| `vessel_upload_begin` | Allocates result storage and starts a write to a key, returning an upload handle. On success the completion callback runs once, potentially before begin returns. The callback receives the terminal status and borrowed metadata on success. A failed begin leaves the handle zero and never calls the callback. |
 | `vessel_upload_write` | Copies up to 64 KiB from caller-owned memory. A nonzero `out_paused` indicates backpressure. |
 | `vessel_upload_drain` | Waits for that backpressure to clear. Call it when write reports a pause, before writing again or committing. |
 | `vessel_upload_end` | Releases the upload handle. A nonzero `commit` signals EOF and requests publication. Zero cancels the write and can interrupt a pending drain. Call end even if completion already reported an error. Repeated calls are safe. |
@@ -54,7 +56,7 @@ Use the completion status to determine the write outcome. A failed drain or writ
 
 ## Callbacks and resource ownership
 
-- Upload callbacks run on the calling thread. Write at most `capacity` bytes to the borrowed buffer and return the count, `0` at EOF, `VESSEL_ERR_CANCELLED` to cancel or another negative value to signal I/O failure.
+- The `vessel_put_stream` input callback runs on the calling thread. Write at most `capacity` bytes to the borrowed buffer and return the count, `0` at EOF, `VESSEL_ERR_CANCELLED` to cancel or another negative value to signal I/O failure.
 - Enumeration callbacks run on the calling thread. The extended callback returns `0` to continue, a positive number to stop successfully or a negative number to cancel. Callback text is borrowed until the callback returns.
 - Logging can run on library threads. Make the callback and context safe for concurrent use. Keep callback objects and contexts alive until the associated operations finish, even if the handle has already been closed.
 - Pass writable, zero-initialized output storage. Free each owned result before reusing it. Call `vessel_free_object` on whole-read results and `vessel_free_metadata` on metadata results. For `vessel_metadata_result_t`, pass `&result.metadata`. These functions accept `NULL` and clear the owned fields they free.

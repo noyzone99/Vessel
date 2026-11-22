@@ -60,7 +60,12 @@ int main(int argc, char** argv)
     assert(input.remaining == 0);
     assert(result.metadata.original_size == 900123);
     assert(result.metadata.compression_type == VESSEL_COMPRESSION_LZ4);
+    assert(strcmp(result.metadata.key, key) == 0);
+    assert(strlen(result.metadata.hash) == 66 && strcmp(result.metadata.hash + 64, "-2") == 0);
+    assert(strcmp(result.metadata.etag, result.metadata.hash) == 0);
     assert(strcmp(result.metadata.file_name, "data.bin") == 0);
+    assert(strcmp(result.metadata.extension, ".bin") == 0);
+    assert(strcmp(result.metadata.mime_type, "application/octet-stream") == 0);
     int64_t written_at = result.creation_date_unix_ms;
     vessel_free_metadata(&result.metadata);
 
@@ -91,7 +96,12 @@ int main(int argc, char** argv)
     assert(vessel_put_ex(storage, "raw", plain, sizeof(plain), 0, info,
         VESSEL_COMPRESSION_NONE, VESSEL_LEVEL_FASTEST, &result) == VESSEL_SUCCESS);
     assert(result.metadata.original_size == (int64_t)sizeof(plain));
+    assert(result.metadata.compressed_size == (int64_t)sizeof(plain));
+    assert(strlen(result.metadata.hash) == 64 && strcmp(result.metadata.etag, result.metadata.hash) == 0);
     vessel_free_metadata(&result.metadata);
+    assert(vessel_put_ex(storage, "raw", plain, sizeof(plain), 0, info,
+        VESSEL_COMPRESSION_NONE, VESSEL_LEVEL_FASTEST, &result) == VESSEL_ERR_ALREADY_EXISTS);
+    assert(result.metadata.key == NULL && result.metadata.hash == NULL && result.creation_date_unix_ms == 0);
     vessel_stream_t seekable = NULL;
     assert(vessel_stream_open(storage, "raw", &seekable) == VESSEL_SUCCESS);
     assert(vessel_stream_can_seek(seekable, &can_seek) == VESSEL_SUCCESS && can_seek == 1);

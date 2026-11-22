@@ -17,7 +17,11 @@ internal sealed class NativeUpload : IDisposable
     internal void Start(NativeHandles<VesselStorage>.Lease store, string key, bool overwrite, ObjectInfo info,
         CompressionType codec, CompressionLevel level, Action<Task<ObjectMetadata>> complete)
     {
-        _completion = Task.Run(() => ObserveAsync(store, key, overwrite, info, codec, level, complete));
+        // Create the completion task before queueing work that owns the callback and its buffers.
+        var work = new Task<Task>(() => ObserveAsync(store, key, overwrite, info, codec, level, complete),
+            TaskCreationOptions.DenyChildAttach);
+        _completion = work.Unwrap();
+        work.Start(TaskScheduler.Default);
     }
 
     private async Task ObserveAsync(NativeHandles<VesselStorage>.Lease store, string key, bool overwrite,

@@ -129,6 +129,7 @@ void VESSEL_CALL vessel_dispose(vessel_t handle);
 
 vessel_error_t VESSEL_CALL vessel_put(vessel_t handle, const char* key, const uint8_t* data,
     int32_t length, int32_t overwrite, vessel_object_info_t info, int32_t comp_type, int32_t comp_level);
+/* Optional write metadata storage is allocated before the object is published. */
 vessel_error_t VESSEL_CALL vessel_put_ex(vessel_t handle, const char* key, const uint8_t* data,
     int64_t length, int32_t overwrite, vessel_object_info_t info, int32_t comp_type, int32_t comp_level,
     vessel_metadata_result_t* out_metadata);
@@ -138,7 +139,8 @@ vessel_error_t VESSEL_CALL vessel_put_ex(vessel_t handle, const char* key, const
  * capacity bytes and return the count, 0 at EOF, VESSEL_ERR_CANCELLED to cancel,
  * or another negative value for I/O failure. Do not retain the buffer. A
  * cancelled upload preserves any existing object. The metadata output is
- * optional. Free an owned result with vessel_free_metadata(&result.metadata).
+ * optional and allocated before publication. Free an owned result with
+ * vessel_free_metadata(&result.metadata).
  */
 vessel_error_t VESSEL_CALL vessel_put_stream(vessel_t handle, const char* key, vessel_read_callback read,
     void* context, int32_t overwrite, vessel_object_info_t info, int32_t comp_type, int32_t comp_level,
@@ -148,6 +150,7 @@ vessel_error_t VESSEL_CALL vessel_put_stream(vessel_t handle, const char* key, v
  * Push upload. On successful begin, complete is called exactly once, possibly
  * before begin returns or on a library thread. Metadata is borrowed until the
  * callback returns and is NULL on failure. Keep context alive until then.
+ * Begin allocates the result storage. If begin fails, no callback runs.
  * The callback must not reenter the upload. Write copies up to 64 KiB before
  * returning. If out_paused is nonzero, call drain before the next write or
  * commit. Drain may block. Serialize producer calls. End with commit == 0

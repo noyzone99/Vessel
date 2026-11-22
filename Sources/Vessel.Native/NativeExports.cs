@@ -13,6 +13,8 @@ public static unsafe class NativeExports
 {
     private const int ChunkSize = 64 * 1024;
     private const int WholeReadLimit = 64 * 1024 * 1024;
+    // SHA-256 in hexadecimal, an optional two-character codec suffix, and NUL.
+    private const int BlobIdentifierCapacity = SHA256.HashSizeInBytes * 2 + 3;
     private static readonly UTF8Encoding s_utf8 = new(false, true);
     private static readonly NativeHandles<VesselStorage> s_stores = new();
     private static readonly NativeHandles<VesselStream> s_streams = new();
@@ -64,15 +66,23 @@ public static unsafe class NativeExports
         if (!s_stores.TryRent(handle, out var store)) return HandleError(handle);
         using (store)
         {
+            NativeMetadataResult prepared = default;
             try
             {
+                var decodedKey = Decode(key);
+                var decodedInfo = Decode(info);
+                if (output != null) prepared = PrepareWriteResult(decodedKey, decodedInfo);
                 using Stream input = length == 0 ? Stream.Null : new UnmanagedMemoryStream(data, length);
-                var metadata = store.Value.PutAsync(Decode(key), input, overwrite != 0, Decode(info), (CompressionType)codec, (CompressionLevel)level)
+                var metadata = store.Value.PutAsync(decodedKey, input, overwrite != 0, decodedInfo, (CompressionType)codec, (CompressionLevel)level)
                     .GetAwaiter().GetResult();
-                if (output != null) *output = ExportResult(metadata);
+                if (output != null) TransferWriteResult(metadata, ref prepared, output);
                 return VesselError.Success;
             }
             catch (Exception error) { return MapError(error); }
+            finally
+            {
+                if (prepared.Metadata.Key != null) ClearMetadata(&prepared.Metadata);
+            }
         }
     }
 
@@ -85,13 +95,21 @@ public static unsafe class NativeExports
         if (!s_stores.TryRent(handle, out var store)) return HandleError(handle);
         using (store)
         {
+            NativeMetadataResult prepared = default;
             try
             {
-                var metadata = ReadInput(store.Value, Decode(key), overwrite != 0, Decode(info), (CompressionType)codec, (CompressionLevel)level, read, context);
-                if (output != null) *output = ExportResult(metadata);
+                var decodedKey = Decode(key);
+                var decodedInfo = Decode(info);
+                if (output != null) prepared = PrepareWriteResult(decodedKey, decodedInfo);
+                var metadata = ReadInput(store.Value, decodedKey, overwrite != 0, decodedInfo, (CompressionType)codec, (CompressionLevel)level, read, context);
+                if (output != null) TransferWriteResult(metadata, ref prepared, output);
                 return VesselError.Success;
             }
             catch (Exception error) { return MapError(error); }
+            finally
+            {
+                if (prepared.Metadata.Key != null) ClearMetadata(&prepared.Metadata);
+            }
         }
     }
 
@@ -147,19 +165,24 @@ public static unsafe class NativeExports
         if (!s_stores.TryRent(handle, out var store)) return HandleError(handle);
 
         nint uploadHandle = 0;
+        NativeMetadataResult prepared = default;
         try
         {
             var decodedKey = Decode(key);
             var decodedInfo = Decode(info);
+            prepared = PrepareWriteResult(decodedKey, decodedInfo);
             var upload = new NativeUpload();
             uploadHandle = s_uploads.Add(upload);
+            // The worker can complete before this call returns. It takes ownership once queued.
+            var callbackResult = prepared;
             upload.Start(store, decodedKey, overwrite != 0, decodedInfo, (CompressionType)codec,
-                (CompressionLevel)level, result => CompleteUpload(result, complete, context));
+                (CompressionLevel)level, result => CompleteUpload(result, complete, context, callbackResult));
             *output = uploadHandle;
             return VesselError.Success;
         }
         catch (Exception error)
         {
+            if (prepared.Metadata.Key != null) ClearMetadata(&prepared.Metadata);
             s_uploads.Close(uploadHandle);
             store.Dispose();
             return MapError(error);
@@ -167,16 +190,19 @@ public static unsafe class NativeExports
     }
 
     private static void CompleteUpload(Task<ObjectMetadata> result,
-        delegate* unmanaged[Cdecl]<void*, VesselError, NativeMetadataResult*, void> complete, void* context)
+        delegate* unmanaged[Cdecl]<void*, VesselError, NativeMetadataResult*, void> complete, void* context,
+        NativeMetadataResult metadata)
     {
-        NativeMetadataResult metadata;
-        try { metadata = ExportResult(result.GetAwaiter().GetResult()); }
-        catch (Exception error)
+        try
         {
-            complete(context, MapError(error), null);
-            return;
+            try { FillWriteResult(result.GetAwaiter().GetResult(), ref metadata); }
+            catch (Exception error)
+            {
+                complete(context, MapError(error), null);
+                return;
+            }
+            complete(context, VesselError.Success, &metadata);
         }
-        try { complete(context, VesselError.Success, &metadata); }
         finally { ClearMetadata(&metadata.Metadata); }
     }
 
@@ -440,15 +466,60 @@ public static unsafe class NativeExports
     private static NativeMetadataResult ExportResult(ObjectMetadata metadata)
         => new() { Metadata = ExportMetadata(metadata), CreationDateUnixMs = metadata.CreationDate.ToUnixTimeMilliseconds() };
 
+    private static NativeMetadataResult PrepareWriteResult(string key, ObjectInfo info)
+    {
+        NativeMetadataResult result = default;
+        try
+        {
+            result.Metadata.Key = AllocateString(key);
+            result.Metadata.Hash = (byte*)NativeMemory.Alloc(BlobIdentifierCapacity);
+            result.Metadata.ETag = (byte*)NativeMemory.Alloc(BlobIdentifierCapacity);
+            result.Metadata.FileName = AllocateString(info.FileName);
+            result.Metadata.Extension = AllocateString(info.Extension);
+            result.Metadata.MimeType = AllocateString(info.MimeType);
+            return result;
+        }
+        catch
+        {
+            ClearMetadata(&result.Metadata);
+            throw;
+        }
+    }
+
+    private static void TransferWriteResult(ObjectMetadata metadata, ref NativeMetadataResult result, NativeMetadataResult* output)
+    {
+        FillWriteResult(metadata, ref result);
+        *output = result;
+        result = default;
+    }
+
+    private static void FillWriteResult(ObjectMetadata metadata, ref NativeMetadataResult result)
+    {
+        // PutAsync derives both strings from the staged blob identifier.
+        WriteBlobIdentifier(metadata.Hash, result.Metadata.Hash);
+        WriteBlobIdentifier(metadata.ETag, result.Metadata.ETag);
+        FillMetadataNumbers(metadata, ref result.Metadata);
+        result.CreationDateUnixMs = metadata.CreationDate.ToUnixTimeMilliseconds();
+    }
+
+    private static void WriteBlobIdentifier(string identifier, byte* output)
+    {
+        var buffer = new Span<byte>(output, BlobIdentifierCapacity);
+        buffer[s_utf8.GetBytes(identifier, buffer)] = 0;
+    }
+
+    private static void FillMetadataNumbers(ObjectMetadata metadata, ref NativeObjectMetadata result)
+    {
+        result.OriginalSize = metadata.OriginalSize;
+        result.CompressedSize = metadata.CompressedSize;
+        result.CompressionType = (int)metadata.CompressionType;
+        result.CreationDateUnix = metadata.CreationDate.ToUnixTimeSeconds();
+    }
+
     private static NativeObjectMetadata ExportMetadata(ObjectMetadata metadata)
     {
-        var result = new NativeObjectMetadata
-        {
-            OriginalSize = metadata.OriginalSize,
-            CompressedSize = metadata.CompressedSize,
-            CompressionType = (int)metadata.CompressionType,
-            CreationDateUnix = metadata.CreationDate.ToUnixTimeSeconds()
-        };
+        NativeObjectMetadata result = default;
+        FillMetadataNumbers(metadata, ref result);
 
         try
         {
