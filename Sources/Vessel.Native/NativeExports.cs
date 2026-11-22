@@ -266,7 +266,10 @@ public static unsafe class NativeExports
                 if (stream.ReadByte() != -1) throw new InvalidDataException("The object exceeds its declared length.");
 
                 var payload = new ReadOnlySpan<byte>(result.Data, (int)stream.Length);
-                if (Convert.ToHexStringLower(SHA256.HashData(payload)) != stream.Checksum)
+                Span<byte> digest = stackalloc byte[SHA256.HashSizeInBytes];
+                Span<char> checksum = stackalloc char[SHA256.HashSizeInBytes * 2];
+                SHA256.HashData(payload, digest);
+                if (!Convert.TryToHexStringLower(digest, checksum, out _) || !checksum.SequenceEqual(stream.Checksum))
                     throw new InvalidDataException("The object does not match its content checksum.");
 
                 result.Checksum = AllocateString(stream.Checksum);

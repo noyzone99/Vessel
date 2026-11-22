@@ -42,7 +42,8 @@ public sealed class VesselStorage : IVesselStorage
                 {
                     _blobStorageEngine.CleanupOrphanedTempFiles();
                     _blobStorageEngine.CleanupUnreferencedBlobs(_metadataRepository.IsHashReferenced);
-                    Log(VesselLogLevel.Information, $"Opened Vessel store at '{path}'.");
+                    if (_logger is not null)
+                        Log(VesselLogLevel.Information, $"Opened Vessel store at '{path}'.");
                 }
                 catch
                 {
@@ -104,7 +105,8 @@ public sealed class VesselStorage : IVesselStorage
         if (previousHash is not null && previousHash != metadata.Hash)
             DeleteBlobIfUnreferenced(previousHash);
 
-        Log(VesselLogLevel.Information, $"Stored object '{key}' with {metadata.OriginalSize} bytes.");
+        if (_logger is not null)
+            Log(VesselLogLevel.Information, $"Stored object '{key}' with {metadata.OriginalSize} bytes.");
         return metadata;
     }
 
@@ -152,7 +154,8 @@ public sealed class VesselStorage : IVesselStorage
                 DeleteBlobIfUnreferenced(metadata.Value.Hash);
             }
 
-            Log(VesselLogLevel.Information, $"Deleted object '{key}'.");
+            if (_logger is not null)
+                Log(VesselLogLevel.Information, $"Deleted object '{key}'.");
             return Task.FromResult(true);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
