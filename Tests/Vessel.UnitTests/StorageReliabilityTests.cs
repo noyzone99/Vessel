@@ -1,8 +1,6 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using Vessel.Metadata;
-using ZoneTree;
-using ZoneTree.Options;
 
 namespace Vessel.Tests;
 
@@ -102,6 +100,8 @@ public sealed class StorageReliabilityTests : IDisposable
             await Put(storage, sample, false, token);
             Assert.ThrowsAny<IOException>(() => new VesselStorage(_root));
         }
+        Assert.True(File.Exists(Path.Combine(_root, "metadata-v1")));
+        Assert.True(Directory.Exists(Path.Combine(_root, "metadata-v2")));
 
         var temporaryFile = Path.Combine(_root, "tmp", "interrupted.tmp");
         await File.WriteAllTextAsync(temporaryFile, "incomplete", token);
@@ -119,34 +119,61 @@ public sealed class StorageReliabilityTests : IDisposable
         await Verify(reopened, sample, token);
     }
 
-    [Fact]
-    public async Task ReopensLegacyMetadataWalAndPayload()
+    [Theory]
+    [InlineData("metadata", false)]
+    [InlineData("metadata", true)]
+    [InlineData("metadata-v1", false)]
+    [InlineData("metadata-v1", true)]
+    public async Task RejectsLegacyMetadataWithoutRemovingPayloads(string metadataDirectory, bool currentDirectoryExists)
     {
         var token = TestContext.Current.CancellationToken;
-        var sample = new Sample("legacy/€uro", [50, 20, 13], CompressionType.None);
-        var hash = Convert.ToHexStringLower(SHA256.HashData(sample.Bytes));
+        byte[] bytes = [50, 20, 13];
+        var hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
         var blobPath = Directory.CreateDirectory(Path.Combine(_root, "blobs", hash[..2], hash[2..4])).FullName;
-        await File.WriteAllBytesAsync(Path.Combine(blobPath, $"{hash}.blob"), sample.Bytes, token);
-        var store = new ZoneTreeFactory<string, ObjectMetadata>()
-            .SetDataDirectory(Path.Combine(_root, "metadata"))
-            .ConfigureWriteAheadLogOptions(options => options.WriteAheadLogMode = WriteAheadLogMode.AsyncCompressed)
-            .ConfigureDiskSegmentOptions(options => options.CompressionMethod = CompressionMethod.None)
-            .SetValueSerializer(new ObjectMetadataSerializer())
-            .SetIsDeletedDelegate(static (in _, in value) => string.IsNullOrEmpty(value.Key))
-            .SetMarkValueDeletedDelegate(static (ref value) => value = default);
-        using (var legacy = store.OpenOrCreate())
+        var blobFile = Path.Combine(blobPath, $"{hash}.blob");
+        await File.WriteAllBytesAsync(blobFile, bytes, token);
+        var legacyPath = Directory.CreateDirectory(Path.Combine(_root, metadataDirectory)).FullName;
+        var currentPath = Path.Combine(_root, "metadata-v2");
+        if (currentDirectoryExists) Directory.CreateDirectory(currentPath);
+
+        var error = Assert.Throws<IOException>(() => new VesselStorage(_root));
+        Assert.Contains("earlier alpha", error.Message, StringComparison.Ordinal);
+        Assert.Equal(bytes, await File.ReadAllBytesAsync(blobFile, token));
+        Assert.True(Directory.Exists(legacyPath));
+        Assert.Equal(currentDirectoryExists, Directory.Exists(currentPath));
+        if (currentDirectoryExists) Assert.Empty(Directory.EnumerateFileSystemEntries(currentPath));
+    }
+
+    [Fact]
+    public async Task MissingMetadataDirectoryPreservesPayloads()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var sample = new Sample("saved", [19, 28, 29], CompressionType.None);
+        using (var storage = new VesselStorage(_root))
+            await Put(storage, sample, false, token);
+
+        Directory.Delete(Path.Combine(_root, "metadata-v2"), recursive: true);
+
+        var error = Assert.Throws<IOException>(() => new VesselStorage(_root));
+        Assert.Contains("metadata directory is missing", error.Message, StringComparison.Ordinal);
+        var blob = Directory.EnumerateFiles(Path.Combine(_root, "blobs"), "*.blob", SearchOption.AllDirectories).Single();
+        Assert.Equal(sample.Bytes, await File.ReadAllBytesAsync(blob, token));
+    }
+
+    [Fact]
+    public async Task CanRemoveMetadataWithAnInvalidBlobIdentifier()
+    {
+        var token = TestContext.Current.CancellationToken;
+        using (var metadata = new MetadataRepository(_root, useCompression: false))
         {
-            legacy.Upsert(sample.Key, new ObjectMetadata(sample.Key, hash, sample.Bytes.Length, sample.Codec, hash,
-                DateTimeOffset.UtcNow, CompressedSize: sample.Bytes.Length));
-            legacy.Upsert("legacy/invalid", new ObjectMetadata("legacy/invalid", hash + "-99", 10,
-                (CompressionType)99, hash, DateTimeOffset.UtcNow));
+            var badMetadata = new ObjectMetadata("invalid", "invalid", 10, (CompressionType)99, "invalid", DateTimeOffset.UnixEpoch);
+            metadata.Upsert(badMetadata);
         }
 
-        using var reopened = new VesselStorage(_root);
-        await Verify(reopened, sample, token);
-        Assert.Throws<InvalidDataException>(() => reopened.GetStream("legacy/invalid"));
-        Assert.True(await reopened.DeleteAsync("legacy/invalid", token));
-        Assert.Equal([sample.Key], reopened.GetAllKeys("legacy/"));
+        using var storage = new VesselStorage(_root);
+        Assert.Throws<InvalidDataException>(() => storage.GetStream("invalid"));
+        Assert.True(await storage.DeleteAsync("invalid", token));
+        Assert.Empty(storage.GetAllKeys());
     }
 
     [Theory]

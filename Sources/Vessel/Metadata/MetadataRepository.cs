@@ -38,12 +38,24 @@ internal sealed class MetadataRepository : IMetadataRepository
         _logger = logger;
         var fullPath = Path.GetFullPath(storageBasePath);
 
-        var currentPath = Path.Join(fullPath, "metadata-v1");
-        var legacyPath = Path.Join(fullPath, "metadata");
-        if (!Directory.Exists(currentPath) && Directory.Exists(legacyPath))
-            MigrateLegacyMetadata(legacyPath, currentPath, useCompression);
+        var currentPath = Path.Join(fullPath, "metadata-v2");
+        var previousPath = Path.Join(fullPath, "metadata-v1");
+        if (Directory.Exists(previousPath) || Directory.Exists(Path.Join(fullPath, "metadata")))
+            throw new IOException("This Vessel release cannot open metadata from an earlier alpha release. Export the objects with the previous release and import them into a new store directory.");
 
-        _metadataDb = CreateFactory(currentPath, useCompression, WriteAheadLogMode.Sync, fileStreamProvider).OpenOrCreate();
+        // An older Vessel would create an empty index at this path and remove the live blobs.
+        if (File.Exists(previousPath))
+        {
+            if (!Directory.Exists(currentPath))
+                throw new IOException("The Vessel metadata directory is missing. Restore the entire store from a backup.");
+        }
+        else
+        {
+            Directory.CreateDirectory(currentPath);
+            using var formatGuard = File.Open(previousPath, FileMode.CreateNew);
+        }
+
+        _metadataDb = CreateFactory(currentPath, useCompression, fileStreamProvider).OpenOrCreate();
         try
         {
             RebuildReferenceCounts();
@@ -56,35 +68,19 @@ internal sealed class MetadataRepository : IMetadataRepository
         }
     }
 
-    private static ZoneTreeFactory<string, ObjectMetadata> CreateFactory(string path, bool useCompression, WriteAheadLogMode logMode, IFileStreamProvider? fileStreamProvider = null)
+    private static ZoneTreeFactory<string, ObjectMetadata> CreateFactory(string path, bool useCompression, IFileStreamProvider? fileStreamProvider)
         => new ZoneTreeFactory<string, ObjectMetadata>(fileStreamProvider)
             .SetDataDirectory(path)
-            .ConfigureWriteAheadLogOptions(options => options.WriteAheadLogMode = logMode)
+            .ConfigureWriteAheadLogOptions(options => options.Mode = WriteAheadLogMode.Private)
             .ConfigureDiskSegmentOptions(options =>
             {
-                options.CompressionMethod = useCompression ? CompressionMethod.LZ4 : CompressionMethod.None;
-                options.CompressionLevel = CompressionLevels.LZ4Fastest;
+                options.CompressionMethod = useCompression ? CompressionMethod.Zstd : CompressionMethod.None;
+                options.CompressionLevel = CompressionLevels.Zstd1;
                 options.CompressionBlockSize = 4 * 1024 * 1024;
             })
             .SetValueSerializer(new ObjectMetadataSerializer())
             .SetIsDeletedDelegate(static (in _, in value) => string.IsNullOrEmpty(value.Key))
             .SetMarkValueDeletedDelegate(static (ref value) => value = default);
-
-    private static void MigrateLegacyMetadata(string legacyPath, string currentPath, bool useCompression)
-    {
-        var stagingPath = $"{currentPath}.migration-{Guid.NewGuid():N}";
-        // ZoneTree preserves the WAL encoding of an existing segment. Copy into a new sync store.
-        using (var legacy = CreateFactory(legacyPath, useCompression, WriteAheadLogMode.AsyncCompressed).OpenOrCreate())
-        using (var target = CreateFactory(stagingPath, useCompression, WriteAheadLogMode.Sync).OpenOrCreate())
-        using (var iterator = legacy.CreateIterator())
-        {
-            iterator.SeekFirst();
-            while (iterator.Next())
-                target.Upsert(iterator.CurrentKey, iterator.CurrentValue);
-        }
-
-        Directory.Move(stagingPath, currentPath);
-    }
 
     /// <inheritdoc/>
     public ObjectMetadata? Get(string key)

@@ -17,11 +17,14 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
     /// <returns>A binary representation of the supplied metadata.</returns>
     public Memory<byte> Serialize(in ObjectMetadata entry)
     {
-        int requiredSize = GetRequiredByteCount(entry);
+        var buffer = new byte[GetMaxByteCount(entry)];
+        int length = Serialize(entry, buffer);
+        return buffer.AsMemory(0, length);
+    }
 
-        var buffer = new byte[requiredSize];
-        Span<byte> destination = buffer.AsSpan();
-
+    /// <summary>Writes the metadata directly to the buffer supplied by ZoneTree.</summary>
+    public int Serialize(in ObjectMetadata entry, Span<byte> destination)
+    {
         int bytesWritten = 0;
 
         BinaryPrimitives.WriteInt64LittleEndian(destination[bytesWritten..], entry.OriginalSize);
@@ -43,7 +46,7 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
         WriteString(entry.Extension, destination, ref bytesWritten);
         WriteString(entry.MimeType, destination, ref bytesWritten);
 
-        return buffer.AsMemory(0, bytesWritten);
+        return bytesWritten;
     }
 
     /// <summary>
@@ -75,8 +78,19 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
         bytesRead += 8;
 
         string key = ReadString(source, ref bytesRead)!;
+        var hashStart = bytesRead;
         string hash = ReadString(source, ref bytesRead)!;
-        string eTag = ReadString(source, ref bytesRead)!;
+        var encodedHash = source[hashStart..bytesRead];
+        string eTag;
+        if (source[bytesRead..].StartsWith(encodedHash))
+        {
+            eTag = hash;
+            bytesRead += encodedHash.Length;
+        }
+        else
+        {
+            eTag = ReadString(source, ref bytesRead)!;
+        }
         string? fileName = ReadString(source, ref bytesRead);
         string? extension = ReadString(source, ref bytesRead);
         string? mimeType = ReadString(source, ref bytesRead);
@@ -151,10 +165,10 @@ internal class ObjectMetadataSerializer : ISerializer<ObjectMetadata>
     /// <summary>
     /// Determines the number of bytes required to serialize the supplied metadata value.
     /// </summary>
-    /// <param name="metadata">The metadata value whose serialized originalSize should be calculated.</param>
+    /// <param name="metadata">The metadata value whose serialized size should be calculated.</param>
     /// <returns>The total number of bytes required by the serialization format.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int GetRequiredByteCount(in ObjectMetadata metadata)
+    public int GetMaxByteCount(in ObjectMetadata metadata)
     {
         return checked(28 + GetStringByteCount(metadata.Key) + GetStringByteCount(metadata.Hash) +
             GetStringByteCount(metadata.ETag) + GetStringByteCount(metadata.FileName) +

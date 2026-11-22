@@ -35,7 +35,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         using var repository = new MetadataRepository(_testStoragePath, false, _mockLogger.Object);
 
         Assert.NotNull(repository);
-        Assert.True(Directory.Exists(Path.Combine(_testStoragePath, "metadata-v1")));
+        Assert.True(Directory.Exists(Path.Combine(_testStoragePath, "metadata-v2")));
     }
 
     [Fact]
@@ -62,7 +62,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         using var repository = new MetadataRepository(_testStoragePath, false);
 
         Assert.NotNull(repository);
-        Assert.True(Directory.Exists(Path.Combine(_testStoragePath, "metadata-v1")));
+        Assert.True(Directory.Exists(Path.Combine(_testStoragePath, "metadata-v2")));
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public sealed class MetadataRepositoryTests : IDisposable
         using var repository = new MetadataRepository(relativePath, false, _mockLogger.Object);
 
         Assert.NotNull(repository);
-        Assert.True(Directory.Exists(Path.Combine(Path.GetFullPath(relativePath), "metadata-v1")));
+        Assert.True(Directory.Exists(Path.Combine(Path.GetFullPath(relativePath), "metadata-v2")));
     }
 
     [Fact]

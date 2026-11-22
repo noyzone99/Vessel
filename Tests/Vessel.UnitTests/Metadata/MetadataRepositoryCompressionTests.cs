@@ -6,7 +6,7 @@ namespace Vessel.UnitTests.Metadata;
 
 /// <summary>
 /// Tests for MetadataRepository with metadata compression enabled. Verifies that the repository works correctly when
-/// using RocksDB's LZ4 compression.
+/// using ZoneTree's Zstd disk segment compression.
 /// </summary>
 public sealed class MetadataRepositoryCompressionTests : IDisposable
 {

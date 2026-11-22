@@ -25,7 +25,6 @@ public sealed class MetadataWriteFailureTests : IDisposable
             repository.Upsert(committed);
             repository.Upsert(CreateMetadata("untouched", "untouched"));
             var wal = Assert.IsType<FaultingWalStream>(provider.Wal);
-            var committedLength = wal.Length;
             wal.FailAfterHeader = true;
             var faulting = Task.Run(() => Record.Exception(() =>
             {
@@ -37,7 +36,7 @@ public sealed class MetadataWriteFailureTests : IDisposable
             try
             {
                 await wal.FailureReached.Task.WaitAsync(timeout, token);
-                Assert.Equal(committedLength + WalHeaderSize, wal.Length);
+                Assert.Equal(wal.FailedRecordPosition + WalHeaderSize, wal.Position);
 
                 var queuedThread = new TaskCompletionSource<Thread>(TaskCreationOptions.RunContinuationsAsynchronously);
                 queuedMutation = Task.Factory.StartNew(() =>
@@ -65,7 +64,6 @@ public sealed class MetadataWriteFailureTests : IDisposable
             Assert.Throws<IOException>(() => repository.Delete("untouched"));
             Assert.Throws<IOException>(() => repository.IterateKeys("").ToArray());
             Assert.True(repository.IsHashReferenced(replacement.Hash));
-            Assert.Equal(committedLength + WalHeaderSize, wal.Length);
         }
 
         using (var reopened = new MetadataRepository(_root, useCompression: false))
@@ -100,7 +98,7 @@ public sealed class MetadataWriteFailureTests : IDisposable
         public IFileStream CreateFileStream(string path, FileMode mode, FileAccess access, FileShare share, int bufferSize, FileOptions options)
         {
             var stream = _local.CreateFileStream(path, mode, access, share, bufferSize, options);
-            if (Path.GetFileName(Path.GetDirectoryName(path)) != "seg" || !Path.GetFileName(path).Contains(".wal.", StringComparison.Ordinal))
+            if (Path.GetFileName(Path.GetDirectoryName(path)) != "seg" || !path.EndsWith(".tail", StringComparison.Ordinal))
                 return stream;
 
             return Wal = new FaultingWalStream(stream, releaseFailure);
@@ -109,21 +107,24 @@ public sealed class MetadataWriteFailureTests : IDisposable
         public bool FileExists(string path) => _local.FileExists(path);
         public bool DirectoryExists(string path) => _local.DirectoryExists(path);
         public void CreateDirectory(string path) => _local.CreateDirectory(path);
+        public void SyncDirectory(string path) => _local.SyncDirectory(path);
         public void DeleteFile(string path) => _local.DeleteFile(path);
         public void DeleteDirectory(string path, bool recursive) => _local.DeleteDirectory(path, recursive);
         public string ReadAllText(string path) => _local.ReadAllText(path);
         public byte[] ReadAllBytes(string path) => _local.ReadAllBytes(path);
         public void Replace(string source, string destination, string backup) => _local.Replace(source, destination, backup);
         public DurableFileWriter GetDurableFileWriter() => _local.GetDurableFileWriter();
+        public IDurableFileOperations GetDurableFileOperations() => _local.GetDurableFileOperations();
         public IReadOnlyList<string> GetDirectories(string path) => _local.GetDirectories(path);
+        public IReadOnlyList<string> GetFiles(string path) => _local.GetFiles(path);
+        public void MoveFile(string source, string destination) => _local.MoveFile(source, destination);
         public string CombinePaths(string first, string second) => _local.CombinePaths(first, second);
     }
 
     private sealed class FaultingWalStream(IFileStream stream, ManualResetEventSlim releaseFailure) : Stream, IFileStream
     {
-        private int _headerBytesLeft = WalHeaderSize;
-
         public bool FailAfterHeader { get; set; }
+        public long FailedRecordPosition { get; private set; }
         public IOException InjectedFailure { get; } = new("Simulated I/O failure after a WAL record header.");
         public TaskCompletionSource FailureReached { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -146,17 +147,14 @@ public sealed class MetadataWriteFailureTests : IDisposable
 
         public override void Write(ReadOnlySpan<byte> buffer)
         {
-            if (!FailAfterHeader)
+            if (!FailAfterHeader || buffer.Length <= WalHeaderSize)
             {
                 stream.Write(buffer);
                 return;
             }
 
-            var count = Math.Min(_headerBytesLeft, buffer.Length);
-            stream.Write(buffer[..count]);
-            _headerBytesLeft -= count;
-            if (count == buffer.Length) return;
-
+            FailedRecordPosition = stream.Position;
+            stream.Write(buffer[..WalHeaderSize]);
             FailAfterHeader = false;
             stream.Flush();
             FailureReached.SetResult();

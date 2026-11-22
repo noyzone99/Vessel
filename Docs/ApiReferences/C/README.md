@@ -15,7 +15,7 @@
 | Function | Result and behavior |
 | --- | --- |
 | `vessel_abi_version` | Returns the ABI version as `int32_t`. |
-| `vessel_init`, `vessel_init_ex` | Open a directory and write a store handle to the output. `_ex` accepts `vessel_options_t` for metadata compression (`0` or `1`) and a logging callback. Absent options disable both. |
+| `vessel_init`, `vessel_init_ex` | Open a directory and write a store handle to the output. `_ex` accepts `vessel_options_t` for Zstd compression of metadata disk segments (`0` or `1`) and a logging callback. Absent options disable both. |
 | `vessel_put`, `vessel_put_ex` | Write a byte buffer to a key. `vessel_put` takes a signed 32-bit length. `_ex` accepts a signed 64-bit length and an optional metadata output. A zero length allows a `NULL` payload. |
 | `vessel_put_stream` | Pulls payload bytes from a callback and accepts an optional metadata output. A cancelled upload preserves the previous object. |
 | `vessel_read` | Returns the whole object up to `VESSEL_WHOLE_READ_LIMIT` (64 MiB) and checks the uncompressed length and checksum. Use streaming for larger objects. |
