@@ -92,9 +92,10 @@ public sealed class VesselStorage : IVesselStorage
             previousHash = previous?.Hash;
             lock (GetLock(_blobLocks, staged.Info.Hash))
             {
-                var (hash, originalSize, compressedSize) = _blobStorageEngine.PublishBlob(staged);
+                var (hash, originalSize, compressedSize) = _blobStorageEngine.PublishBlob(staged, cancellationToken);
                 var createdAt = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                 metadata = new ObjectMetadata(key, hash, originalSize, compressionType, hash, createdAt, fileInfo.FileName, fileInfo.Extension, fileInfo.MimeType, compressedSize);
+                cancellationToken.ThrowIfCancellationRequested();
                 _metadataRepository.Upsert(metadata);
             }
         }

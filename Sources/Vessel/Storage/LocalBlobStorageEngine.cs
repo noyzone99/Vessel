@@ -44,8 +44,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
     public async Task<BlobInfo> WriteBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
     {
         using var staged = await StageBlobAsync(inputStream, compressionType, compressionLevel, cancellationToken).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        return PublishBlob(staged);
+        return PublishBlob(staged, cancellationToken);
     }
 
     public async Task<StagedBlob> StageBlobAsync(Stream inputStream, CompressionType compressionType, CompressionLevel compressionLevel, CancellationToken cancellationToken)
@@ -102,9 +101,10 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
     }
 
     // The caller holds the blob's lock across publication and the metadata commit.
-    public BlobInfo PublishBlob(StagedBlob staged)
+    public BlobInfo PublishBlob(StagedBlob staged, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+        cancellationToken.ThrowIfCancellationRequested();
         var path = GetBlobPath(staged.Info.Hash);
         var existing = new FileInfo(path);
         if (existing.Exists)
@@ -112,6 +112,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         staged.FlushAndClose();
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
             File.Move(staged.Path, path);
