@@ -255,7 +255,7 @@ public static unsafe class NativeExports
             NativeVesselObject result = default;
             try
             {
-                using var stream = store.Value.GetStream(Decode(key));
+                using var stream = store.Value.GetStream(Decode(key), synchronous: OperatingSystem.IsWindows());
                 if (stream.Length > WholeReadLimit) return VesselError.LimitExceeded;
                 result.Length = stream.Length;
                 if (stream.Length != 0)
@@ -385,7 +385,7 @@ public static unsafe class NativeExports
         {
             try
             {
-                *output = s_streams.Add(store.Value.GetStream(Decode(key)));
+                *output = s_streams.Add(store.Value.GetStream(Decode(key), synchronous: OperatingSystem.IsWindows()));
                 return VesselError.Success;
             }
             catch (Exception error) { return MapError(error); }

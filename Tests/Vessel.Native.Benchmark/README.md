@@ -9,7 +9,7 @@ From an x64 Visual Studio Developer PowerShell, with the published header and th
 ```powershell
 $include = '<directory containing the published vessel.h>'
 $library = '<path to native vessel.lib>'
-cl.exe /nologo /std:c11 /O2 /W4 /WX "/I$include" Tests/Vessel.Native.Benchmark/benchmark.c $library /Fe:vessel-benchmark.exe
+cl.exe /nologo /std:c11 /O2 /W4 /WX "/I$include" Tests/Vessel.Native.Benchmark/benchmark.c $library /Fevessel-benchmark.exe
 $env:PATH = '<directory containing vessel.dll>' + [IO.Path]::PathSeparator + $env:PATH
 ```
 
@@ -25,7 +25,7 @@ Set `LD_LIBRARY_PATH` on Linux or `DYLD_LIBRARY_PATH` on macOS to the library di
 
 ## Run
 
-Pass a fresh directory for each timed data run. Keep the directory to measure reopening separately.
+Pass a fresh directory for each timed data run. Keep the directory to measure reopening separately or add `--reuse` to a later `read` to time the same fixture against another library build.
 
 ```sh
 ./vessel-benchmark /path/to/empty-store read zstd 65536 8 128

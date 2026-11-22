@@ -56,13 +56,15 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)compressionType, (uint)CompressionType.LZ4);
         cancellationToken.ThrowIfCancellationRequested();
 
+        var knownLength = GetKnownRemainingLength(inputStream);
+        var fileBufferSize = knownLength is <= StagingFileBufferSize ? StagingFileBufferSize : BufferSize;
         var tempPath = GetTempFilePath();
-        var file = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, StagingFileBufferSize, FileOptions.Asynchronous);
+        var file = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, fileBufferSize, FileOptions.Asynchronous);
         var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
         try
         {
             using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            var pledgedSize = compressionType == CompressionType.Zstd ? GetPledgedSize(inputStream) : null;
+            var pledgedSize = compressionType == CompressionType.Zstd ? knownLength : null;
             var target = WrapStream(file, compressionType, compressionLevel, pledgedSize);
             long originalSize = 0;
             var copyComplete = false;
@@ -155,11 +157,15 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
 
     /// <inheritdoc/>
     public Stream OpenBlobRead(string hash, CompressionType compressionType, long? expectedSize = null)
+        => OpenBlobRead(hash, compressionType, expectedSize, synchronous: false);
+
+    internal Stream OpenBlobRead(string hash, CompressionType compressionType, long? expectedSize, bool synchronous)
     {
         ThrowIfDisposed();
         var path = GetBlobPath(hash);
+        var options = FileOptions.SequentialScan | (synchronous ? FileOptions.None : FileOptions.Asynchronous);
         var fileSource = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete,
-            BufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            BufferSize, options);
 
         try
         {
@@ -274,7 +280,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         };
     }
 
-    private static ulong? GetPledgedSize(Stream stream)
+    private static ulong? GetKnownRemainingLength(Stream stream)
     {
         if (ReferenceEquals(stream, Stream.Null)) return 0;
 

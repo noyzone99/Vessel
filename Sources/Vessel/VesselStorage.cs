@@ -111,7 +111,9 @@ public sealed class VesselStorage : IVesselStorage
     }
 
     /// <inheritdoc/>
-    public VesselStream GetStream(string key)
+    public VesselStream GetStream(string key) => GetStream(key, synchronous: false);
+
+    internal VesselStream GetStream(string key, bool synchronous)
     {
         using var operation = BeginOperation();
         ValidateKey(key);
@@ -126,7 +128,9 @@ public sealed class VesselStorage : IVesselStorage
             {
                 // Older releases could record the losing writer's compressed size during deduplication.
                 var expectedSize = metadata.CompressionType == CompressionType.None ? metadata.OriginalSize : (long?)null;
-                var stream = _blobStorageEngine.OpenBlobRead(metadata.Hash, metadata.CompressionType, expectedSize);
+                // Synchronous handles improved native LZ4 reads on Windows. The native caller selects the platform.
+                var stream = _blobStorageEngine.OpenBlobRead(metadata.Hash, metadata.CompressionType, expectedSize,
+                    synchronous && metadata.CompressionType == CompressionType.LZ4);
                 return new VesselStream(stream, metadata.ContentHash, metadata.OriginalSize,
                     new ObjectInfo(metadata.FileName, metadata.Extension, metadata.MimeType), metadata: metadata);
             }
