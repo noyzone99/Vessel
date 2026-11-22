@@ -14,6 +14,7 @@ namespace Vessel.Storage;
 internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
 {
     private const int BufferSize = 64 * 1024;
+    private const int StagingFileBufferSize = 4 * 1024;
     private const int ContentHashHexLength = 64;
     private readonly string _blobsPath;
     private readonly string _tmpPath;
@@ -56,7 +57,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         var tempPath = GetTempFilePath();
-        var file = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, BufferSize, FileOptions.Asynchronous);
+        var file = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, StagingFileBufferSize, FileOptions.Asynchronous);
         var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
         try
         {
@@ -128,7 +129,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            File.Move(staged.Path, path);
+            staged.MoveTo(path);
             return staged.Info;
         }
         catch (IOException) when (File.Exists(path))
@@ -212,7 +213,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         foreach (var path in Directory.EnumerateFiles(_blobsPath, "*.blob", options))
         {
             var hash = Path.GetFileNameWithoutExtension(path);
-            if (IsBlobIdentifier(hash) && path.Equals(GetBlobPath(hash), StringComparison.Ordinal) && !isReferenced(hash))
+            if (IsBlobIdentifier(hash) && !isReferenced(hash) && path.Equals(GetBlobPath(hash), StringComparison.Ordinal))
                 TryDeleteFile(path);
         }
     }
