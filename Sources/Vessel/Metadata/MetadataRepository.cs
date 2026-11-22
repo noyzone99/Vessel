@@ -258,7 +258,8 @@ internal sealed class MetadataRepository : IMetadataRepository
     /// </summary>
     private void RebuildReferenceCounts()
     {
-        using var iterator = _metadataDb.CreateIterator();
+        // Recovery scans the entire index once. Reserve the block cache for application reads.
+        using var iterator = _metadataDb.CreateIterator(contributeToTheBlockCache: false);
         iterator.SeekFirst();
         while (iterator.Next())
         {
