@@ -61,10 +61,15 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         try
         {
             using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            var target = WrapStream(file, compressionType, compressionLevel);
+            var pledgedSize = compressionType == CompressionType.Zstd ? GetPledgedSize(inputStream) : null;
+            var target = WrapStream(file, compressionType, compressionLevel, pledgedSize);
             long originalSize = 0;
+            var copyComplete = false;
             try
             {
+                if (target is CompressionStream zstd && pledgedSize is ulong size)
+                    zstd.SetPledgedSrcSize(size);
+
                 var memory = buffer.AsMemory(0, BufferSize);
                 int bytesRead;
                 while ((bytesRead = await inputStream.ReadAsync(memory, cancellationToken).ConfigureAwait(false)) != 0)
@@ -73,11 +78,18 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
                     hasher.AppendData(memory.Span[..bytesRead]);
                     await target.WriteAsync(memory[..bytesRead], cancellationToken).ConfigureAwait(false);
                 }
+                copyComplete = true;
             }
             finally
             {
                 if (target != file)
-                    await target.DisposeAsync().ConfigureAwait(false);
+                {
+                    try { await target.DisposeAsync().ConfigureAwait(false); }
+                    catch (ZstdException) when (pledgedSize.HasValue && !copyComplete)
+                    {
+                        // Ending a partial frame can fail the size check. Preserve the copy error.
+                    }
+                }
             }
 
             Span<byte> digest = stackalloc byte[32];
@@ -247,16 +259,30 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
     /// <param name="baseStream">The destination stream that receives the compressed bytes.</param>
     /// <param name="type">The compression codec requested by the caller.</param>
     /// <param name="level">The compression strength selected for the operation.</param>
+    /// <param name="pledgedSize">The exact remaining input size, when known.</param>
     /// <returns>A stream that writes compressed data to the supplied base stream.</returns>
-    private static Stream WrapStream(Stream baseStream, CompressionType type, CompressionLevel level)
+    private static Stream WrapStream(Stream baseStream, CompressionType type, CompressionLevel level, ulong? pledgedSize)
     {
         return type switch
         {
-            CompressionType.Zstd => new CompressionStream(baseStream, GetZstdLevel(level), leaveOpen: true),
+            CompressionType.Zstd => new CompressionStream(baseStream, GetZstdLevel(level),
+                bufferSize: pledgedSize is <= BufferSize ? BufferSize : 0, leaveOpen: true),
             CompressionType.LZ4 => LZ4Stream.Encode(baseStream, new LZ4EncoderSettings { CompressionLevel = GetLZ4Level(level) }, leaveOpen: true),
             CompressionType.None => baseStream,
             _ => throw new ArgumentOutOfRangeException(nameof(type))
         };
+    }
+
+    private static ulong? GetPledgedSize(Stream stream)
+    {
+        if (ReferenceEquals(stream, Stream.Null)) return 0;
+
+        // Only these BCL read-only streams guarantee length and position reflect what Read returns.
+        var type = stream.GetType();
+        if ((type == typeof(MemoryStream) || type == typeof(UnmanagedMemoryStream)) && stream.CanRead && !stream.CanWrite)
+            return (ulong)Math.Max(0, stream.Length - stream.Position);
+
+        return null;
     }
 
     /// <summary>
