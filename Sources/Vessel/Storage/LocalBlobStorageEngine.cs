@@ -14,6 +14,7 @@ namespace Vessel.Storage;
 internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
 {
     private const int BufferSize = 64 * 1024;
+    private const int ContentHashHexLength = 64;
     private readonly string _blobsPath;
     private readonly string _tmpPath;
     private readonly IVesselLogger? _logger;
@@ -108,7 +109,7 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         var path = GetBlobPath(staged.Info.Hash);
         var existing = new FileInfo(path);
         if (existing.Exists)
-            return staged.Info with { CompressedSize = existing.Length };
+            return ReuseExistingBlob(staged.Info, existing.Length);
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         staged.FlushAndClose();
@@ -120,8 +121,23 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
         }
         catch (IOException) when (File.Exists(path))
         {
-            return staged.Info with { CompressedSize = new FileInfo(path).Length };
+            return ReuseExistingBlob(staged.Info, new FileInfo(path).Length);
         }
+    }
+
+    private static BlobInfo ReuseExistingBlob(BlobInfo blob, long storedLength)
+    {
+        // Only uncompressed blob identifiers have no codec suffix.
+        if (blob.Hash.Length == ContentHashHexLength)
+            ValidateBlobLength(blob.Hash, storedLength, blob.Size);
+
+        return blob with { CompressedSize = storedLength };
+    }
+
+    private static void ValidateBlobLength(string hash, long storedLength, long expectedLength)
+    {
+        if (storedLength != expectedLength)
+            throw new InvalidDataException($"Blob '{hash}' has an unexpected stored length.");
     }
 
     /// <inheritdoc/>
@@ -134,8 +150,8 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
 
         try
         {
-            if (expectedSize is long size && fileSource.Length != size)
-                throw new InvalidDataException($"Blob '{hash}' has an unexpected stored length.");
+            if (expectedSize is long size)
+                ValidateBlobLength(hash, fileSource.Length, size);
 
             return compressionType switch
             {
@@ -190,8 +206,8 @@ internal sealed class LocalBlobStorageEngine : IBlobStorageEngine, IDisposable
     }
 
     internal static bool IsBlobIdentifier(string hash) =>
-        (hash.Length == 64 || (hash.Length == 66 && hash[64] == '-' && hash[65] is '1' or '2')) &&
-        hash.AsSpan(0, 64).IndexOfAnyExcept("0123456789abcdef") < 0;
+        (hash.Length == ContentHashHexLength || (hash.Length == ContentHashHexLength + 2 && hash[^2] == '-' && hash[^1] is '1' or '2')) &&
+        hash.AsSpan(0, ContentHashHexLength).IndexOfAnyExcept("0123456789abcdef") < 0;
 
     internal static void TryDeleteFile(string path)
     {

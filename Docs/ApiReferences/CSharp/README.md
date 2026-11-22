@@ -9,7 +9,7 @@ The [public interface](../../../Sources/Vessel/IVesselStorage.cs) defines the op
 | Member | Inputs, result and common failures |
 | --- | --- |
 | `VesselStorage(string storageBasePath, VesselStorageOptions? options = null)` | Opens or creates the directory. An open store already holding the directory lock causes an `IOException`. |
-| `PutAsync(string key, Stream contentStream, ...)` | Reads the caller's stream from its current position to EOF and returns `Task<ObjectMetadata>`. A duplicate key with overwrite disabled causes `InvalidOperationException`. |
+| `PutAsync(string key, Stream contentStream, ...)` | Reads the caller's stream from its current position to EOF and returns `Task<ObjectMetadata>`. A duplicate key with overwrite disabled causes `InvalidOperationException`. An unexpected length on a reused uncompressed blob causes `InvalidDataException`. |
 | `GetStream(string key)` | Returns a read-only `VesselStream` for a version of the object. A missing key causes `FileNotFoundException`. Missing or invalid blob data can cause `InvalidDataException`. |
 | `GetMetadata(string key)` | Returns `ObjectMetadata?` without opening the blob and returns `null` for a missing key. |
 | `GetAllKeys(string prefix = "")` | Returns a lazy `IEnumerable<string>` matching an ordinal prefix. The empty prefix matches all keys. `null` causes `ArgumentNullException`. |

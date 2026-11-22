@@ -6,6 +6,8 @@ An object consists of a key, a byte payload and optional file metadata such as t
 
 Vessel keeps metadata in ZoneTree and stores payloads in a content-addressed directory. Identical bytes written with the same codec share a blob. Choose uncompressed storage, LZ4 or Zstd per write. `ObjectMetadata.Hash` and the native `hash` field identify the physical blob and include a codec suffix for compressed objects. `ObjectMetadata.ContentHash`, `VesselStream.Checksum` and `vessel_read` expose the SHA-256 digest of the original bytes.
 
+A write that would reuse an uncompressed blob with an unexpected stored length fails before it commits metadata for the key.
+
 ## Open stores and readers
 
 Open one Vessel instance per storage directory. Share that instance across concurrent operations and give each independent reader its own stream. Opening a second instance on the same directory fails with an I/O error. Wait for active operations to finish before reopening a disposed store.
