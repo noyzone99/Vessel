@@ -40,14 +40,11 @@ gradle -p Examples/java run
 
 For a locally installed build, pass `-PvesselLocal` to the Gradle example. It then resolves Vessel from the local Maven repository.
 
-```java
-try (var store = new VesselStorage(Path.of("vessel-data"))) {
-    store.put("notes/hello.txt", "Hello from Vessel".getBytes(StandardCharsets.UTF_8));
-    System.out.println(new String(store.read("notes/hello.txt"), StandardCharsets.UTF_8));
-}
-```
+The example opens `my-store`, streams `Hello from Vessel!` into `documents/hello.txt` with overwrite enabled and prints the text after reading it back. Run it again to replace the object at the same key.
 
-## Stream files
+## Common tasks
+
+### Stream files
 
 `put` reads an input stream from its current position and returns the committed metadata. Close the source and any stream from `open` with try-with-resources.
 
@@ -65,5 +62,8 @@ try (var store = new VesselStorage(Path.of("vessel-data"));
 
 Use `metadata(key)` for a metadata lookup, `keys("backups/")` for prefix listings and `delete(key)` to remove an object. `read(key)` verifies the entire payload and has a 64 MiB limit. `open(key)` supports larger payloads and keeps the selected version readable across overwrites and deletions.
 
+## See also
+
 - [Java API reference](../../ApiReferences/Java/README.md)
+- [Kotlin/JVM user guide](../Kotlin/README.md)
 - [Shared storage behavior](../Storage.md)

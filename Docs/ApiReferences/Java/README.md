@@ -2,6 +2,8 @@
 
 The JDK 25 binding exports package `io.github.noyzone99.vessel` and uses [Vessel C ABI 1](../C/README.md). See the [Java user guide](../../UserGuide/Java/README.md) for the Maven and Gradle setup and JVM native access options.
 
+See the [Kotlin/JVM reference](../Kotlin/README.md) for using the same API from Kotlin.
+
 ## `VesselStorage`
 
 | Operation | Contract |

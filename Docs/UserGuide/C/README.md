@@ -8,7 +8,7 @@ Before a release is published, use a [native CI artifact](../BuildFromSource.md#
 
 ## Write and read an object
 
-Save this as `hello.c`. The program checks the ABI version, writes a small object, reads it back and releases the resources allocated by Vessel.
+Save this as `hello.c`. The program opens `my-store`, writes `documents/hello.txt` with overwrite enabled and streams it back. It prints `Hello from Vessel!`.
 
 ~~~c
 #include <stdio.h>
@@ -23,9 +23,9 @@ int main(void)
 
     const char *key = "documents/hello.txt";
     const uint8_t payload[] = "Hello from Vessel!";
-    vessel_object_info_t info = {"hello.txt", ".txt", "text/plain"};
+    vessel_object_info_t info = {0};
     vessel_t store = NULL;
-    vessel_object_t object = {0};
+    vessel_stream_t content = NULL;
 
     vessel_error_t status = vessel_init("my-store", &store);
     if (status == VESSEL_SUCCESS) {
@@ -33,17 +33,27 @@ int main(void)
             info, VESSEL_COMPRESSION_NONE, VESSEL_LEVEL_BALANCED, NULL);
     }
     if (status == VESSEL_SUCCESS) {
-        status = vessel_read(store, key, &object);
+        status = vessel_stream_open(store, key, &content);
     }
 
+    uint8_t buffer[256];
+    int32_t count;
+    while (status == VESSEL_SUCCESS) {
+        status = vessel_stream_read(content, buffer, sizeof(buffer), &count);
+        if (status != VESSEL_SUCCESS || count == 0) {
+            break;
+        }
+        if (fwrite(buffer, 1, (size_t)count, stdout) != (size_t)count) {
+            status = VESSEL_ERR_IO;
+        }
+    }
     if (status == VESSEL_SUCCESS) {
-        fwrite(object.data, 1, (size_t)object.length, stdout);
         putchar('\n');
     } else {
         fprintf(stderr, "Vessel status %d\n", (int)status);
     }
 
-    vessel_free_object(&object);
+    vessel_stream_close(content);
     vessel_dispose(store);
     return status == VESSEL_SUCCESS ? 0 : 1;
 }
@@ -98,4 +108,8 @@ The executable contains Vessel and its NativeAOT runtime code. The linker option
 - Get metadata without reading the payload with `vessel_get_metadata_ex`. Free the embedded metadata with `vessel_free_metadata`.
 - List or remove keys with `vessel_get_all_keys_ex` and `vessel_delete`.
 
-See the [C ABI reference](../../ApiReferences/C/README.md) for status codes, callbacks and ownership. The [C smoke test](../../../Tests/Vessel.Native.Tests/smoke.c) includes a streaming example.
+## See also
+
+- [C ABI reference](../../ApiReferences/C/README.md)
+- [Shared storage behavior](../Storage.md)
+- [Streaming upload in the C smoke test](../../../Tests/Vessel.Native.Tests/smoke.c)

@@ -16,7 +16,7 @@ Vessel is an embedded object store for application-owned local filesystems. Keep
 | Managed `Vessel` | .NET 8, .NET 10 and .NET 11 |
 | Native `Vessel.Native` | .NET 11 NativeAOT shared library with a C ABI and experimental static archives for Windows x64 and Linux glibc x64 |
 | Native platforms | Windows, Linux (glibc and musl) and macOS, each on x64 and ARM64 |
-| Language integration | C# through the `VesselStorage` NuGet package, C through `vessel.h`, Python through `vessel-storage`, Java 25 through the `vessel-storage` JAR, and Node.js 24 and later through the `vessel-storage` npm package with TypeScript declarations |
+| Language integration | C#, F# and Visual Basic through `VesselStorage` on NuGet, C through `vessel.h`, C++, Rust and Go through source bindings for the C ABI, Python through `vessel-storage`, Java and Kotlin/JVM on JDK 25 through the `vessel-storage` JAR, and Node.js 24 and later through the `vessel-storage` npm package with TypeScript declarations |
 
 Use the project files and [validation workflow](.github/workflows/validate.yml) to verify framework targets and the native CI matrix. Describe integrations according to their implementation, validation and publication status.
 
@@ -43,8 +43,8 @@ Docs/
     <Language>/README.md           Public contracts and interop details
 ```
 
-- Use `CSharp`, `C`, `Python`, `Java` and `NodeJS` as the current language directory names. Add matching guide and reference directories when a new integration has a verifiable example and public API or interop contract. Add focused topic pages as needed and link them from the relevant `README.md`.
-- Start each language guide with prerequisites and setup, followed by a runnable write-and-read example, common tasks and links to its API reference and shared topics.
+- Use `CSharp`, `FSharp`, `VisualBasic`, `C`, `Cpp`, `Rust`, `Go`, `Python`, `Java`, `Kotlin` and `NodeJS` as the current language directory names. Add matching guide and reference directories when a new integration has a verifiable example and public API or interop contract. Add focused topic pages as needed and link them from the relevant `README.md`.
+- Start each language guide with setup, then cover writing and reading an object, common tasks and links to its API reference and shared topics. The runnable quickstart opens `my-store`, writes the UTF-8 bytes `Hello from Vessel!` to `documents/hello.txt` with overwrite enabled, then reads and prints the text.
 - Organize each reference by public type or operation. Cover parameters and defaults, results and failures, resource ownership, concurrency and version or platform constraints where applicable. Document the native contract in the C reference and link to it from FFI references for shared behavior.
 - Keep the root README focused on what Vessel does, why it exists, a short example and how to build from source. Keep the NuGet package README in `Sources/Vessel/Assets/README.md` because NuGet embeds it in the package.
 - Update the guides and references when changing public behavior, supported targets or build commands. Verify examples against the current source and tests. Keep the documentation indexes and cross-links current.

@@ -11,6 +11,8 @@ dotnet pack Sources/Vessel -c Release
 
 `Vessel` targets .NET 8, .NET 10 and .NET 11. Use a project reference to develop against the checkout. To consume the package, add `Sources/Vessel/bin/Release/Packages/` as a local NuGet source alongside your existing sources and install `VesselStorage` from it.
 
+Run the [C#](CSharp/README.md), [F#](FSharp/README.md) and [Visual Basic](VisualBasic/README.md) quickstarts with `dotnet run --project Examples/Vessel.Examples.ConsoleApp`, `dotnet run --project Examples/fsharp` and `dotnet run --project Examples/visualbasic`, respectively. The validation workflow builds and runs them on Windows and Linux glibc x64.
+
 ## Platforms and architectures
 
 The platform matrix applies to the native library and language bindings that load it. The process that loads the library must match the binary's operating system, architecture and, on Linux, C library. The [CI workflow](../../.github/workflows/validate.yml) builds each target, runs the C and Python ABI smoke tests, tests the Python wheel in a fresh virtual environment and runs the same assembled Java JAR on all eight targets.
@@ -85,6 +87,16 @@ python .github/scripts/build_static_native.py win-x64 artifacts/native-static/wi
 python .github/scripts/build_static_native.py linux-x64 artifacts/native-static/linux-glibc-x64
 ~~~
 
+## Build the C++, Rust and Go bindings
+
+Publish the [shared library](#build-the-shared-library) or extract the native archive for your target. Use the same target OS, architecture and Linux C library for the application and the shared library. Each binding is available from the repository and links to the shared library separately.
+
+- [C++](Cpp/README.md) uses the C++17 compiler's include and linker paths.
+- [Rust](Rust/README.md) uses Cargo with `VESSEL_LIBRARY_DIR` pointing to the native link library.
+- [Go](Go/README.md) uses a cgo-compatible C toolchain and `CGO_LDFLAGS` to locate the native link library.
+
+Follow each guide to build the quickstart and configure the runtime library search path. The validation workflow builds and runs all three bindings and examples on Linux glibc x64.
+
 ## Build a Python wheel
 
 Use Python 3.10 or later with `venv` and `pip`, and install `patchelf` on Linux. Publish the [shared library](#build-the-shared-library) for your target first. Run the wheel builder in an environment matching the target OS, architecture and Linux C library. The script installs its build tools in a temporary virtual environment and tests the resulting wheel in a separate environment.
@@ -141,7 +153,7 @@ mvn -f Bindings/java/pom.xml clean verify
 
 For Linux or macOS, use the same structure under `artifacts/java-natives/<RID>/` and the filename from the [platform table](#platforms-and-architectures). Run `mvn -f Bindings/java/pom.xml clean install` to install the result in your local Maven repository. Keep the staging directory limited to the targets you intend to bundle.
 
-The `verify` phase runs [the smoke test](../../Bindings/java/src/test/java/Smoke.java) with the packaged JAR on the classpath. CI stages all eight binaries from the tested native artifacts, checks every packaged binary against its input and builds the [Maven and Gradle examples](../../Examples/java) against the resulting artifact. It then tests the same JAR from scratch on each host, including an Alpine JVM for musl.
+The `verify` phase runs [the smoke test](../../Bindings/java/src/test/java/Smoke.java) with the packaged JAR on the classpath. CI stages all eight binaries from the tested native artifacts, checks every packaged binary against its input and runs the [Java Maven and Gradle examples](../../Examples/java) and [Kotlin/JVM Gradle example](../../Examples/kotlin) against the resulting artifact. It then tests the same JAR from scratch on each host, including an Alpine JVM for musl.
 
 ## Build the Node.js packages
 
@@ -157,7 +169,7 @@ For other targets, use the RID and shared library filename from the [platform ta
 
 ## Tagged releases
 
-Set the .NET and native version in [`Directory.Build.props`](../../Directory.Build.props), the same Java version in [`Bindings/java/pom.xml`](../../Bindings/java/pom.xml), the main and optional dependency versions in [`Bindings/node/package.json`](../../Bindings/node/package.json) and the Python equivalent in [`pyproject.toml`](../../Bindings/python/pyproject.toml). For the first alpha, the version is `0.0.1-alpha.1` and the Python equivalent is `0.0.1a1`. Update the version shown in the Java guide and examples. The C ABI version is tracked separately in [`vessel.h`](../../Sources/Vessel.Native/vessel.h).
+Set the .NET and native version in [`Directory.Build.props`](../../Directory.Build.props), the same Java version in [`Bindings/java/pom.xml`](../../Bindings/java/pom.xml), the main and optional dependency versions in [`Bindings/node/package.json`](../../Bindings/node/package.json) and the Python equivalent in [`pyproject.toml`](../../Bindings/python/pyproject.toml). For the first alpha, the version is `0.0.1-alpha.1` and the Python equivalent is `0.0.1a1`. Update the version shown in the Java and Kotlin/JVM guides and examples. The C ABI version is tracked separately in [`vessel.h`](../../Sources/Vessel.Native/vessel.h).
 
 A tag matching the configured version, such as `v0.0.1-alpha.1`, triggers the [release jobs](../../.github/workflows/validate.yml) after validation. The [GitHub Release](https://github.com/noyzone99/Vessel/releases) contains eight dynamic and two experimental static C archives, the `VesselStorage` NuGet package, eight `vessel-storage` wheels and the Java JAR with its POM, sources and Javadoc. PyPI receives the platform wheels.
 

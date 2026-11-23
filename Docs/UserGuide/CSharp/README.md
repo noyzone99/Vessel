@@ -14,7 +14,7 @@ To try a version before publication, use a project reference to `Sources/Vessel/
 
 ## Write and read an object
 
-Replace `Program.cs` with the following example.
+Replace `Program.cs` with the following example, or use the [project in the repository](../../../Examples/Vessel.Examples.ConsoleApp/).
 
 ~~~csharp
 using System;
@@ -46,4 +46,7 @@ Pass any readable stream to `PutAsync`, including a stream that cannot seek. Ves
 | List related keys | Iterate `storage.GetAllKeys("documents/")`. |
 | Delete an object | Await `storage.DeleteAsync(key)`. The result tells you whether an object was removed. |
 
-See the [C# API reference](../../ApiReferences/CSharp/README.md) for types, defaults and errors, and [storage behavior](../Storage.md) for concurrency and persistence.
+## See also
+
+- [C# API reference](../../ApiReferences/CSharp/README.md)
+- [Shared storage behavior](../Storage.md)

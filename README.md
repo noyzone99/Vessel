@@ -21,8 +21,18 @@ Vessel is designed to keep memory use predictable while streaming large objects 
 - [Python](Docs/UserGuide/Python/README.md) uses the `vessel-storage` wheel with its bundled native library.
 - [Java](Docs/UserGuide/Java/README.md) uses the `vessel-storage` JAR on Java 25 with bundled native libraries.
 - [Node.js](Docs/UserGuide/NodeJS/README.md) uses the `vessel-storage` npm package on Node.js 24 and later with JavaScript and TypeScript support. The npm packages can be built from source.
+- [C++](Docs/UserGuide/Cpp/README.md), [Rust](Docs/UserGuide/Rust/README.md) and [Go](Docs/UserGuide/Go/README.md) use source bindings linked to the native library.
+- [F#](Docs/UserGuide/FSharp/README.md) and [Visual Basic](Docs/UserGuide/VisualBasic/README.md) use the same NuGet package as C#. [Kotlin/JVM](Docs/UserGuide/Kotlin/README.md) uses the same JAR as Java.
 
 For published versions, find the native C archives, NuGet package, Python wheels and Java JARs in [GitHub Releases](https://github.com/noyzone99/Vessel/releases). The [user guide](Docs/UserGuide/README.md) links to the package registries.
+
+With the required SDK installed, try the [C# example](Examples/Vessel.Examples.ConsoleApp/) from the repository root.
+
+```sh
+dotnet run --project Examples/Vessel.Examples.ConsoleApp
+```
+
+The example writes `Hello from Vessel!` to `documents/hello.txt` in `my-store` and prints the text after reading it back. Each language guide uses the same example.
 
 ## Build from source
 
@@ -35,6 +45,7 @@ Run `dotnet build Vessel.slnx -c Release` from the repository root to build the 
 - **Python** — [Build a wheel from the shared library](Docs/UserGuide/BuildFromSource.md#build-a-python-wheel). This requires Python 3.10 or later with `venv` and `pip`, plus `patchelf` on Linux.
 - **Java** — [Build the JAR with Maven](Docs/UserGuide/BuildFromSource.md#build-the-java-jar). This requires JDK 25 and the shared library for each platform you want to package.
 - **Node.js** — [Build the npm packages](Docs/UserGuide/BuildFromSource.md#build-the-nodejs-packages). This requires Node.js 24 or later, a native compiler and the shared library for your platform.
+- **C++, Rust and Go** — [Build and link the native bindings](Docs/UserGuide/BuildFromSource.md#build-the-c-rust-and-go-bindings).
 
 ## Documentation
 

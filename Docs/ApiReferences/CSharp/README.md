@@ -2,6 +2,8 @@
 
 `Vessel` targets .NET 8, .NET 10 and .NET 11. Storage and data types are in the `Vessel` namespace. Logging types are in `Vessel.Logging`.
 
+See the [F#](../FSharp/README.md) and [Visual Basic](../VisualBasic/README.md) references for calling this API from those languages.
+
 ## `VesselStorage` and `IVesselStorage`
 
 The [public interface](../../../Sources/Vessel/IVesselStorage.cs) defines the operations below. [`VesselStorage`](../../../Sources/Vessel/VesselStorage.cs) implements them for a local directory.

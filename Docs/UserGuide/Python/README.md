@@ -21,21 +21,21 @@ To package both together, [build a wheel from source](../BuildFromSource.md#buil
 Save this as `hello.py`. It creates `my-store` in the working directory.
 
 ~~~python
-from vessel import ObjectInfo, VesselStorage
+from io import BytesIO
+from vessel import VesselStorage
 
 with VesselStorage("my-store") as store:
-    metadata = store.put(
-        "documents/hello.txt",
-        b"Hello from Vessel!",
-        overwrite=True,
-        info=ObjectInfo(file_name="hello.txt", extension=".txt", mime_type="text/plain"),
-    )
-    print(store.read(metadata.key).decode("utf-8"))
+    with BytesIO(b"Hello from Vessel!") as source:
+        metadata = store.put_stream("documents/hello.txt", source, overwrite=True)
+    with store.open(metadata.key) as content:
+        print(content.read().decode("utf-8"))
 ~~~
 
-Run `python hello.py`. The program prints `Hello from Vessel!`.
+Run `python hello.py`. The program prints `Hello from Vessel!`. The overwrite option lets you rerun it with the same store and key.
 
-## Stream files
+## Common tasks
+
+### Stream files
 
 Use `put_stream()` to upload from a binary file and `open()` to download in chunks. This example assumes `input.bin` exists in the working directory.
 
@@ -56,10 +56,13 @@ with VesselStorage("my-store") as store:
 
 Uploads start at the input's current position. Use `read()` for objects up to 64 MiB and a stream for larger objects. Uncompressed streams support seeking. An open stream keeps its version if another operation overwrites or deletes the key.
 
-## List, inspect and delete objects
+### List, inspect and delete objects
 
 - Use `store.keys("documents/")` to collect matching keys. An empty prefix collects all keys.
 - Use `store.get_metadata(key)` to inspect sizes, compression, hashes and file attributes without reading the payload.
 - Use `store.delete(key)` to remove an object. It returns `True` if it removed an object and `False` if the key was absent.
 
-See the [Python API reference](../../ApiReferences/Python/README.md) for method signatures, errors and resource lifetimes, and [storage behavior](../Storage.md) for persistence and concurrency.
+## See also
+
+- [Python API reference](../../ApiReferences/Python/README.md)
+- [Shared storage behavior](../Storage.md)

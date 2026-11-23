@@ -6,6 +6,8 @@
   </Configurations>
   <Folder Name="/Examples/">
     <Project Path="Examples/Vessel.Examples.ConsoleApp/Vessel.Examples.ConsoleApp.csproj" />
+    <Project Path="Examples/fsharp/Vessel.Examples.FSharp.fsproj" />
+    <Project Path="Examples/visualbasic/Vessel.Examples.VisualBasic.vbproj" />
   </Folder>
   <Folder Name="/Sources/">
     <Project Path="Sources/Vessel/Vessel.csproj" />

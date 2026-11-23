@@ -10,28 +10,37 @@ npm install ./artifacts/npm/vessel-storage-0.0.1-alpha.1.tgz ./artifacts/npm/ves
 
 After registry publication, `npm install vessel-storage` will resolve the platform package through optional dependencies. Keep optional dependencies enabled.
 
-## Write and read
+## Write and read an object
 
 Save this example as `example.mjs` and run `node example.mjs`.
 
 ```js
 import { Buffer } from 'node:buffer';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { Vessel } from 'vessel-storage';
 
-const vessel = await Vessel.open('./store');
+const vessel = await Vessel.open('my-store');
 try {
-  await vessel.put('hello', Buffer.from('Hello, Vessel!'), { overwrite: true });
-  for await (const chunk of vessel.createReadStream('hello')) {
-    process.stdout.write(chunk);
+  const key = 'documents/hello.txt';
+  await pipeline(Readable.from([Buffer.from('Hello from Vessel!', 'utf8')]),
+    vessel.createWriteStream(key, { overwrite: true }));
+  const content = vessel.createReadStream(key).setEncoding('utf8');
+  let stored = '';
+  for await (const chunk of content) {
+    stored += chunk;
   }
+  console.log(stored);
 } finally {
   await vessel.close();
 }
 ```
 
-For TypeScript, install `@types/node` for your Node.js major and use `module: "NodeNext"` so TypeScript follows the package exports. JavaScript CommonJS callers can use `const { Vessel } = require('vessel-storage')`.
+It prints `Hello from Vessel!`. The overwrite option lets you rerun it with the same store and key. For TypeScript, install `@types/node` for your Node.js major and use `module: "NodeNext"` so TypeScript follows the package exports. JavaScript CommonJS callers can use `const { Vessel } = require('vessel-storage')`.
 
-## Stream files
+## Common tasks
+
+### Stream files
 
 ```js
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -48,4 +57,9 @@ try {
 }
 ```
 
-Use `getMetadata(key)` to read metadata, `keys(prefix)` to find objects and `delete(key)` to remove one. See the [API reference](../../ApiReferences/NodeJS/README.md) and [shared storage guide](../Storage.md).
+Use `getMetadata(key)` to read metadata, `keys(prefix)` to find objects and `delete(key)` to remove one.
+
+## See also
+
+- [Node.js API reference](../../ApiReferences/NodeJS/README.md)
+- [Shared storage behavior](../Storage.md)

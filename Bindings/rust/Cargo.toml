@@ -1,0 +1,11 @@
+[package]
+name = "vessel-storage"
+version = "0.0.1-alpha.1"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+description = "Streaming bindings for the Vessel embedded object store"
+repository = "https://github.com/noyzone99/Vessel"
+
+[lib]
+name = "vessel"
